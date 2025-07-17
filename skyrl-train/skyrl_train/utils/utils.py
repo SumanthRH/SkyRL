@@ -259,7 +259,7 @@ def initialize_ray(cfg: DictConfig):
         # again does not fix the issue. Temporarily we disable compilation cache, which seems to fix the issue.
         # This should not have any effect on performance - compilation will still happen, it's just not cached
         # TODO (sumanthrh): remove this once vLLM fixes the issue
-        env_vars["VLLM_DISABLE_COMPILE_CACHE"] = 1
+        env_vars["VLLM_DISABLE_COMPILE_CACHE"] = "1"
 
         if not os.environ.get("VLLM_USE_V1", False):
             logger.info(
