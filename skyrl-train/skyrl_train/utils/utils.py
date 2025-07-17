@@ -254,6 +254,10 @@ def initialize_ray(cfg: DictConfig):
         # NOTE (sumanthrh): In vllm >= 0.9.0, we need to explicitly allow for serialization via pickle for collective RPCs.
         # During weight transfer, we use IPC handles, which contains a `function` object and requires pickling.
         env_vars["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"
+        
+        # NOTE (sumanthrh): In vLLM 0.9.2, we've observed compilatiion issues with torch compile. removing the compilation directory and trying
+        # again does not fix the issue. Temporarily, we disable compilation cache. This should not have any effect on performance
+        env_vars["VLLM_DISABLE_COMPILE_CACHE"] = 1
 
         if not os.environ.get("VLLM_USE_V1", False):
             logger.info(
