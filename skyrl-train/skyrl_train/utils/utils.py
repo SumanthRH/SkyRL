@@ -258,6 +258,7 @@ def initialize_ray(cfg: DictConfig):
         # NOTE (sumanthrh): In vLLM >= 0.9.0, we've observed compilatiion failures with torch compile. removing the compilation directory and trying
         # again does not fix the issue. Temporarily we disable compilation cache, which seems to fix the issue.
         # This should not have any effect on performance - compilation will still happen, it's just not cached
+        # TODO (sumanthrh): remove this once vLLM fixes the issue
         env_vars["VLLM_DISABLE_COMPILE_CACHE"] = 1
 
         if not os.environ.get("VLLM_USE_V1", False):
