@@ -268,9 +268,7 @@ class FSDPStrategy(DistributedStrategy):
         if optim_config is not None:
             optimizer_type = getattr(optim_config, "optimizer_type", "adamw")
             actor_optimizer = create_optimizer(
-                optimizer_type=optimizer_type,
-                model_parameters=fsdp_module.parameters(),
-                config=optim_config
+                optimizer_type=optimizer_type, model_parameters=fsdp_module.parameters(), config=optim_config
             )
 
             #  TODO(csy): add other schedulers, add more to config
