@@ -6,9 +6,8 @@ on:
       - main
     paths:
       - 'skyrl-train/**'
-    paths-ignore:
-      - 'skyrl-train/docs/**'
-      - 'skyrl-train/examples/**'
+      - '!skyrl-train/docs/**'
+      - '!skyrl-train/examples/**'
   workflow_dispatch:
 
 
