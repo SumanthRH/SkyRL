@@ -8,6 +8,7 @@ on:
       - 'skyrl-train/**'
       - '!skyrl-train/docs/**'
       - '!skyrl-train/examples/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 
