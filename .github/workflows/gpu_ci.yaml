@@ -3,7 +3,12 @@ name: SkyRL-GPU
 on: 
   push: 
     branches: 
-      - main 
+      - main
+    paths:
+      - skyrl-train/**
+    paths-ignore:
+      - skyrl-train/docs/
+      - skyrl-train/examples/
   workflow_dispatch:
 
 
