@@ -8,7 +8,7 @@ Requirements
 
 We use `uv <https://docs.astral.sh/uv/>`_ to manage dependencies. We also make use of the `uv` and `ray` integration to manage dependencies for ray workers. 
 
-If you're :ref:`running on an existing Ray cluster <running-on-existing-ray-cluster>`, we suggest using Ray 2.48.0 and Python 3.12.
+If you're :ref:`running on an existing Ray cluster <running-on-existing-ray-cluster>`, we suggest using Ray 2.48.0 and Python 3.12. However, we support Ray versions >= 2.44.0. 
 
 
 Docker (recommended)
@@ -42,6 +42,7 @@ For installation without the Dockerfile, make sure you meet the pre-requisities:
 - CUDA 12.8
 - `uv <https://docs.astral.sh/uv/>`_
 - `ray <https://docs.ray.io/en/latest/>`_ 2.48.0
+
 
 System Dependencies
 ~~~~~~~~~~~~~~~~~~~
@@ -154,6 +155,10 @@ We include these dependencies in the legacy Dockerfile: `Dockerfile.ray244 <http
 
     pip install vllm==0.9.2 --extra-index-url https://download.pytorch.org/whl/cu128
     pip install ray==2.46.0 omegaconf==2.3.0 loguru==0.7.3 jaxtyping==0.3.2 pyarrow==20.0.0
+
+
+.. note::
+    We recommend using uv version 0.8.3 or above. uv versions 0.8.0, 0.8.1, or 0.8.2 have a `bug <https://github.com/astral-sh/uv/issues/14860>`_ in the ``--with`` flag.
 
 Development 
 -----------
