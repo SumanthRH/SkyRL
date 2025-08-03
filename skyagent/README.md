@@ -14,9 +14,18 @@ SkyAgent is still under development. We are actively working on expanding availa
 
 ## Getting Started
 
-We use [uv](https://docs.astral.sh/uv/) to manage the dependencies.
+
+The first step is the clone the repository. `skyagent` is it's own subpackage in the SkyRL repository.
+
+```bash
+git clone --recurse-submodules https://github.com/NovaSky-AI/SkyRL.git 
+# our working directory
+cd skyagent
+```
 
 ### Installation
+
+We use [uv](https://docs.astral.sh/uv/) to manage the dependencies.
 
 ```bash
 uv venv
@@ -30,7 +39,7 @@ We support running evaluation with any OpenAI-compatible server,
 For example: 
 
 ```bash
-uv run vllm serve Qwen/Qwen2.5-1.5B-Instruct --host 0.0.0.0 --port 8000
+vllm serve Qwen/Qwen2.5-1.5B-Instruct --host 0.0.0.0 --port 8000
 ```
 You also need set up the sandbox fusion following instructions here: https://github.com/bytedance/SandboxFusion.
 
