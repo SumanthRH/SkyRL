@@ -13,23 +13,6 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, default='dataset/swe-gym')
     args = parser.parse_args()
 
-    # Read the selected instance IDs from swe_gym_verified_cleand.json
-    # instance_ids = set()
-    # try:
-    #     with open('swe_gym_verified_cleaned.json', 'r') as f:
-    #         data = json.load(f)
-    #         for instance_id in data:
-    #             instance_ids.add(instance_id)
-    #     print(f"Loaded {len(instance_ids)} instance IDs from swe_gym_verified_cleand.json")
-    # except FileNotFoundError:
-    #     print("Warning: swe_gym_verified_cleand.json not found. Processing all instances.")
-    # except json.JSONDecodeError:
-    #     print("Error: Failed to decode swe_gym_verified_cleand.json. Ensure it is valid JSON.")
-    #     exit(1)
-    # swe_gym = load_dataset("NovaSky-AI/SkyRL-v0-293-data", split="train")
-    # Stream to avoid schema parsing issues
-    # swe_gym_streamed = load_dataset("NovaSky-AI/SkyRL-v0-293-data", split="train", streaming=True)
-
     # Convert to list for processing
     # swe_gym = list(swe_gym_streamed)
     def extract_func_part(instance_id: str) -> str:

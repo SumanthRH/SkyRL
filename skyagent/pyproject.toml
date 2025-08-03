@@ -83,10 +83,6 @@ skyrl-train = { path = "./skyrl-train", editable = true }
 [tool.setuptools]
 packages = ["skyagent"]
 
-# We read the version from a file in 'skyagent/version/version'
-[tool.setuptools.dynamic]
-version = {attr = "skyagent.__version__"}
-
 # If you need to mimic `package_dir={'': '.'}`:
 [tool.setuptools.package-dir]
 "" = "."
