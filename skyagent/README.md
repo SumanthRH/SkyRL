@@ -29,7 +29,7 @@ We use [uv](https://docs.astral.sh/uv/) to manage the dependencies.
 
 ```bash
 uv venv
-uv pip install -e .
+uv sync
 ```
 
 ### Running evaluation
