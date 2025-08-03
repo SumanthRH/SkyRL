@@ -4,8 +4,8 @@ SkyAgent is a generic agent layer for training and evaluating agents.
 
 SkyAgent is designed primarly for researchers to have a unified interface around implementing agentic tasks. A modular design allows researchers to 
 1. bring in their own tasks
-2. use any training backend or simply run evaluation, 
-3. modify runtime implementation for a given task, 
+2. use any training backend or simply run evaluation
+3. modify runtime implementation for a given task
 4. improve dispatching logic for a batch of trajectories
 5. and more ...
 
