@@ -31,7 +31,7 @@ We have a few examples in the ``examples`` folder:
 Core components
 ---------------
 
-SkyAgent consists of the following componets:
+SkyAgent consists of the following components:
 
 1. `AgentRunner <https://github.com/NovaSky-AI/SkyRL/blob/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/skyagent/agents/base.py#L89>`_ : The main entrypoint for Skyagent is the AgentRunner class - it's responsible for generating trajectories for the given batch of prompts
 2. `Trajectory <https://github.com/NovaSky-AI/SkyRL/blob/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/skyagent/agents/base.py#L61C7-L61C21>`_ : the trajectory class handles generating a single trajectory for the given instance from the batch. 
@@ -104,9 +104,3 @@ We currently provide two tasks:
 
 1. `SWEBenchTask <https://github.com/NovaSky-AI/SkyRL/blob/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/skyagent/tasks/swebench/utils.py#L341>`_ : Implements the SWEBench task leveraging `OpenHands <https://github.com/All-Hands-AI/OpenHands>`_ .
 2. `GeneralReactTask <https://github.com/NovaSky-AI/SkyRL/blob/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/skyagent/tasks/general_react/utils.py#L7>`_ : A general task implementation for many basic reasoning tasks like math, science, simple code generation, etc. 
-
-
-
-
-
-
