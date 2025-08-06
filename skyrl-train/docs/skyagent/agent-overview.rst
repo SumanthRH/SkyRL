@@ -1,4 +1,4 @@
-SkyRL-Agent Overview
+SkyAgent Overview
 ====================
 
 SkyAgent is a generic agent layer for training and evaluating agents. It is a flexible frontend for building your own agents. 
@@ -14,7 +14,7 @@ SkyAgent is designed primarily for researchers to have a unified interface aroun
 
 .. warning::
     
-    ⚠️ SkyRL-Agent is still under active development. We welcome any early feedback and contributions. 
+    ⚠️ SkyAgent is still under active development. We welcome any early feedback and contributions. 
 
 
 Examples

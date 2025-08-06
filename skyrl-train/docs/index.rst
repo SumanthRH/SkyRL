@@ -86,4 +86,4 @@ SkyRL is a full-stack RL library designed for modularity and extensibility.
    :maxdepth: 2
    :caption: (NEW) SkyRL-Agent
 
-   skyrl-agent/agent-overview 
+   skyagent/agent-overview 
