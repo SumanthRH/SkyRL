@@ -17,6 +17,17 @@ SkyAgent is designed primarily for researchers to have a unified interface aroun
     ⚠️ SkyRL-Agent is still under active development. We welcome any early feedback and contributions. 
 
 
+Examples
+--------
+
+We have a few examples in the ``examples`` folder: 
+
+1. `Evaluation: OpenAI <https://github.com/NovaSky-AI/SkyRL/tree/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/examples/run_openai>`_: This example shows how to run evaluation with an OpenAI compatible endpoint.
+2. `Training: SkyAgent and SkyRL-train <https://github.com/NovaSky-AI/SkyRL/tree/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/examples/run_skyrl>`_ : Training a model on the SWEBench task with SkyRL-train.
+3. `Training: SkyAgent and VeRL <https://github.com/NovaSky-AI/SkyRL/tree/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/examples/run_verl>`_ : Training a model on the SWEBench task with VeRL.
+
+
+
 Core components
 ---------------
 
@@ -36,11 +47,19 @@ Trajectory
 The trajectory class handles generating a single trajectory for the given instance from the batch. It has three methods:
 
 1. ``initialize_trajectory``: Initialize the trajectory eg: setup any runtime environment needed for the agent to run.
-2. ``generate_trajectory``: Generate the trajectory eg: run the agent loop and get the final conversation and task results. 
-3. ``evaluate_trajectory``: Evaluate the trajectory eg: parse the response and evaluate the results.
+2. ``generate_trajectory``: Generate the trajectory i.e. run the agent loop and get the final conversation and task results. 
+3. ``evaluate_trajectory``: Evaluate the trajectory i.e. parse the final result and evaluate it for the given task.
 
 
 The results of both ``generate_trajectory`` and ``evaluate_trajectory`` are stored in a ``.result`` attribute of the trajectory. Each trajectory instance will initialize an ``Agent`` instance to generate responses.
+
+Here's a high-level diagram of the components involved in generating a trajectory:
+
+.. figure:: images/generate_trajectory.png
+   :alt: Generate Trajectory
+   :align: center
+   :width: 80%
+
 
 Agent
 -----
@@ -82,19 +101,6 @@ We currently provide two tasks:
 
 1. `SWEBenchTask <https://github.com/NovaSky-AI/SkyRL/blob/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/skyagent/tasks/swebench/utils.py#L341>`_ : Implements the SWEBench task leveraging `OpenHands <https://github.com/All-Hands-AI/OpenHands>`_ .
 2. `GeneralReactTask <https://github.com/NovaSky-AI/SkyRL/blob/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/skyagent/tasks/general_react/utils.py#L7>`_ : A general task implementation for many basic reasoning tasks like math, science, simple code generation, etc. 
-
-
-
-Examples
---------
-
-We have a few examples in the ``examples`` folder: 
-
-1. `Evaluation: OpenAI <https://github.com/NovaSky-AI/SkyRL/tree/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/examples/run_openai>`_: This example shows how to run evaluation with an OpenAI compatible endpoint.
-2. `Training: SkyAgent and SkyRL-train <https://github.com/NovaSky-AI/SkyRL/tree/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/examples/run_skyrl>`_ : Training a model on the SWEBench task with SkyRL-train.
-3. `Training: SkyAgent and VeRL <https://github.com/NovaSky-AI/SkyRL/tree/bd9d6a9bace82df5e27c81ab231f5f4a17b2cf5b/skyagent/examples/run_verl>`_ : Training a model on the SWEBench task with VeRL.
-
-
 
 
 
