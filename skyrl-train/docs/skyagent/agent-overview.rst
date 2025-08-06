@@ -86,6 +86,9 @@ For example, we provide a pipelined dispatcher that can run multiple trajectorie
    :width: 80%
 
 
+   Overview of the pipelined dispatcher with ``max_parallel_agents=3``
+
+
 
 Task
 ----
