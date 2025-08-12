@@ -208,8 +208,6 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
                 for i, token_logprobs in enumerate(resp.logprobs):
                     token_logprobs: Dict[str, Logprob]
                     token_id = resp.token_ids[i]
-                    if i == 0:
-                        print("Type: ", type(token_logprobs))
                     logprob = token_logprobs[token_id].logprob
                     _logprobs.append(logprob)
                     del token_logprobs

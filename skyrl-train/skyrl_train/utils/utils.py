@@ -228,10 +228,10 @@ def validate_cfg(cfg: DictConfig):
         if cfg.generator.backend == "sglang":
             raise NotImplementedError("`trainer.algorithm.use_tis` doesn't support Sglang backend, please use vLLM")
 
-        if not cfg.generator.batched or cfg.generator.max_turns > 1:
-            raise ValueError(
-                "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
-            )
+        # if not cfg.generator.batched or cfg.generator.max_turns > 1:
+        #     raise ValueError(
+        #         "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
+        #     )
 
 
 @ray.remote

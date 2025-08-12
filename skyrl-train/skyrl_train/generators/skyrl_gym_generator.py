@@ -80,7 +80,6 @@ class SkyRLGymGenerator(GeneratorInterface):
             prompt_token_ids: List[int]
             rollout_logprobs: Optional[List[float]]
         """
-
         # Create a new environment instance
         env_extras["max_turns"] = self.max_turns  # TODO(shu): move this to config
         env_config = self.skyrl_gym_cfg.get(env_class, DictConfig({}))
@@ -224,7 +223,6 @@ class SkyRLGymGenerator(GeneratorInterface):
         responses = engine_output["responses"]
         stop_reasons = engine_output["stop_reasons"]
         logprobs = engine_output.get("response_logprobs", None)
-        print("logprobs: ", logprobs is not None)
 
         truncated_responses = []
         rewards = []

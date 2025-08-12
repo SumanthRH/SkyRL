@@ -690,7 +690,6 @@ class RayPPOTrainer:
         - after calling this method, the same model placement still holds.
         """
         generator_output: GeneratorOutput = await self.generator.generate(input_batch)
-        print("generator_output_keys: ", generator_output.keys())
 
         # add rollout metrics to self.all_metrics
         if generator_output["rollout_metrics"] is not None:
