@@ -99,6 +99,7 @@ trainer:
     eps_clip_high: 0.2
     # dual clip parameters
     clip_ratio_c: 3.0
+    # Truncated Importance Sampling as proposed in https://fengyao.notion.site/off-policy-rl 
     tis_imp_ratio_cap: -1.0
     use_tis: false
 
