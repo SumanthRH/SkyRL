@@ -89,6 +89,11 @@ def concatenate_generator_outputs(generator_outputs: List[GeneratorOutput]) -> G
         "response_ids": sum([output["response_ids"] for output in generator_outputs], []),
         "rewards": sum([output["rewards"] for output in generator_outputs], []),
         "loss_masks": sum([output["loss_masks"] for output in generator_outputs], []),
+        "rollout_logprobs": (
+            sum([output["rollout_logprobs"] for output in generator_outputs], [])
+            if generator_outputs[0]["rollout_logprobs"]
+            else None
+        ),
     }
     if "stop_reasons" in generator_outputs[0]:
         result["stop_reasons"] = sum([output["stop_reasons"] for output in generator_outputs], [])

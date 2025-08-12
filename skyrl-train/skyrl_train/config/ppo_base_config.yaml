@@ -99,6 +99,8 @@ trainer:
     eps_clip_high: 0.2
     # dual clip parameters
     clip_ratio_c: 3.0
+    tis_imp_ratio_cap: -1.0
+    use_tis: false
 
     # value loss parameters
     value_clip: 0.2
@@ -174,6 +176,7 @@ generator:
     top_p: 1.0
     min_p: 0.0
     top_k: -1
+    get_logprobs: false
 
   # whether to use a conversation based format for multi-turn generations
   # if false, append multi-turn model responses and env observations to the original assistant response
@@ -187,6 +190,7 @@ generator:
     top_p: 1.0
     min_p: 0.0
     top_k: -1
+    get_logprobs: false
 
   # number of samples per prompt for evaluation
   eval_n_samples_per_prompt: 1

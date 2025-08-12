@@ -137,6 +137,8 @@ def create_ray_wrapped_inference_engines(
             max_num_seqs=max_num_seqs,
             sampling_params=sampling_params,
             tokenizer=tokenizer,
+            # for rollout log probs
+            max_logprobs=1,
         )
         inference_engine_actors.append(vllm_engine)
 

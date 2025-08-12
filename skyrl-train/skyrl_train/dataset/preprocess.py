@@ -33,12 +33,14 @@ def convert_prompts_responses_to_batch_tensors(
     responses: List[List[int]],
     custom_rewards: List[List[float]],
     loss_masks: List[List[int]],
+    logprobs: Optional[List[List[float]]] = None,
 ) -> Tuple[
     Float[torch.Tensor, "batch seq_len"],
     Float[torch.Tensor, "batch seq_len"],
     Float[torch.Tensor, "batch response_len"],
     Float[torch.Tensor, "batch response_len"],
     Float[torch.Tensor, "batch response_len"],
+    Optional[Float[torch.Tensor, "batch response_len"]],
 ]:
     """
     Convert prompts and responses to batch tensors for training.
@@ -58,6 +60,7 @@ def convert_prompts_responses_to_batch_tensors(
         responses: List of tokenized responses
         custom_rewards: List of custom rewards for each response
         loss_masks: List of loss masks for each response
+        logprobs: List of rollout log probs for each response
 
     Returns:
         sequences: Full trajectories (padded and concatenated prompts and responses). Size: (batch, seq_len).
@@ -120,4 +123,10 @@ def convert_prompts_responses_to_batch_tensors(
             custom_reward = torch.tensor(custom_reward)
         ret_custom_rewards[i, : len(custom_reward)] = custom_reward
 
-    return sequences, attention_mask, action_mask, ret_custom_rewards, ret_loss_masks
+    logprobs_tensor = None
+    if logprobs:
+        logprobs_tensor = torch.zeros_like(action_mask, dtype=torch.float)
+        for i, sample_logprobs in enumerate(logprobs):
+            logprobs_tensor[i, : len(sample_logprobs)] = torch.tensor(sample_logprobs)
+
+    return sequences, attention_mask, action_mask, ret_custom_rewards, ret_loss_masks, logprobs_tensor

@@ -633,19 +633,29 @@ class RayPPOTrainer:
         custom_rewards: List[List[float]] = generator_output["rewards"]
         loss_masks: List[List[int]] = generator_output["loss_masks"]
 
+        logprobs: Optional[List[List[float]]] = generator_output.get("rollout_logprobs", None)
+
         (
             sequences_tensor,
             attention_masks_tensor,
             response_masks_tensor,
             custom_rewards_tensor,
             loss_masks_tensor,
+            rollout_logprobs_tensor,
         ) = convert_prompts_responses_to_batch_tensors(
             self.tokenizer,
             prompt_ids,
             response_ids,
             custom_rewards,
             loss_masks,
+            logprobs,
         )
+        # sanity check for tis
+        if self.cfg.trainer.algorithm.use_tis:
+            assert (
+                rollout_logprobs_tensor is not None
+            ), "expected non-null rollout logprobs tensor with  `trainer.algorithm.use_tis` as `True`"
+            assert rollout_logprobs_tensor.shape == loss_masks_tensor.shape, "Logprobs should look like responses"
         training_input = TrainingInputBatch(
             {
                 "sequences": sequences_tensor,  # Full trajectories (padded and concatenated prompts and responses)
@@ -653,6 +663,7 @@ class RayPPOTrainer:
                 "response_mask": response_masks_tensor,
                 "custom_rewards": custom_rewards_tensor,
                 "loss_mask": loss_masks_tensor,
+                "rollout_logprobs": rollout_logprobs_tensor,
             },
         )
         training_input.metadata = {
@@ -679,6 +690,7 @@ class RayPPOTrainer:
         - after calling this method, the same model placement still holds.
         """
         generator_output: GeneratorOutput = await self.generator.generate(input_batch)
+        print("generator_output_keys: ", generator_output.keys())
 
         # add rollout metrics to self.all_metrics
         if generator_output["rollout_metrics"] is not None:

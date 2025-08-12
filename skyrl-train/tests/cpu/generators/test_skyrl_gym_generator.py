@@ -50,7 +50,11 @@ def mock_llm():
     # Mock the new generate method
     def mock_generate(input_batch):
         num_prompts = len(input_batch["prompts"]) if "prompts" in input_batch else len(input_batch["prompt_token_ids"])
-        return {"responses": ["mocked output"] * num_prompts, "stop_reasons": ["stop"] * num_prompts}
+        return {
+            "responses": ["mocked output"] * num_prompts,
+            "stop_reasons": ["stop"] * num_prompts,
+            "response_logprobs": [[0.1, 0.2, 0.3]] * num_prompts,
+        }
 
     mock.generate = AsyncMock(side_effect=mock_generate)
     return mock
@@ -70,6 +74,7 @@ def mock_env():
 def mock_generator_cfg():
     cfg = MagicMock()
     cfg.sampling_params.max_generate_length = 5
+    cfg.sampling_params.get_logprobs = False
     cfg.max_input_length = 512
     cfg.batched = True
     cfg.max_turns = 1
@@ -122,7 +127,15 @@ def validate_generator_input(input_batch: GeneratorInput) -> bool:
 def validate_generator_output(output: GeneratorOutput) -> bool:
     """Validate that output conforms to GeneratorOutput TypedDict interface."""
     # Check that output has all required keys
-    required_keys = {"prompt_token_ids", "response_ids", "rewards", "loss_masks", "stop_reasons", "rollout_metrics"}
+    required_keys = {
+        "prompt_token_ids",
+        "response_ids",
+        "rewards",
+        "loss_masks",
+        "stop_reasons",
+        "rollout_metrics",
+        "rollout_logprobs",
+    }
     if not all(key in output for key in required_keys):
         return False
 
@@ -179,6 +192,15 @@ def validate_generator_output(output: GeneratorOutput) -> bool:
         if not all(isinstance(k, str) for k in rollout_metrics.keys()):
             return False
 
+    rollout_logprobs = output["rollout_logprobs"]
+    if rollout_logprobs is not None:
+        if not isinstance(rollout_logprobs, list):
+            return False
+        for sample_logprobs in rollout_logprobs:
+            if not isinstance(sample_logprobs, list):
+                return False
+            if not all(isinstance(val, (int, float)) for val in sample_logprobs):
+                return False
     return True
 
 
@@ -205,7 +227,7 @@ async def test_agent_loop_single_turn(
 
     prompt = [{"role": "user", "content": "What is 2 + 2?"}]
     extras = {"answer": "4"}
-    response_text, reward, stop_reason, loss_mask, input_prompt = await generator.agent_loop(
+    response_text, reward, stop_reason, loss_mask, input_prompt, rollout_logprobs = await generator.agent_loop(
         prompt, mock_env_cfg.env_class, extras, max_tokens=8, max_input_length=512
     )
 
@@ -248,7 +270,15 @@ async def test_generate_batched(mock_make, mock_tokenizer, mock_llm, mock_env, m
 
 def test_generator_output_concatenation():
     # First ensure that the GeneratorOutput fields are what we expect
-    expected_fields = ["prompt_token_ids", "response_ids", "rewards", "loss_masks", "stop_reasons", "rollout_metrics"]
+    expected_fields = [
+        "prompt_token_ids",
+        "response_ids",
+        "rewards",
+        "loss_masks",
+        "stop_reasons",
+        "rollout_metrics",
+        "rollout_logprobs",
+    ]
     assert set(GeneratorOutput.__annotations__.keys()) == set(expected_fields), (
         "GeneratorOutput fields are not what we expect. "
         "Please update the test and `concatenate_generator_outputs()` to reflect the new fields."
@@ -261,6 +291,7 @@ def test_generator_output_concatenation():
         "rewards": [1.0, 2.0],
         "loss_masks": [[1, 1], [1, 1]],
         "stop_reasons": ["stop", "stop"],
+        "rollout_logprobs": [[0.1, 0.2], [0.3, 0.4]],
     }
 
     generator_output_2: GeneratorOutput = {
@@ -269,6 +300,7 @@ def test_generator_output_concatenation():
         "rewards": [2.0, 3.0],
         "loss_masks": [[1, 1, 1], [1, 1, 1]],
         "stop_reasons": ["stop", "stop"],
+        "rollout_logprobs": [[0.5, 0.6], [0.7, 0.8]],
     }
 
     generator_outputs = [generator_output_1, generator_output_2]
@@ -279,6 +311,7 @@ def test_generator_output_concatenation():
     assert concatenated_output["rewards"] == [1.0, 2.0, 2.0, 3.0]
     assert concatenated_output["loss_masks"] == [[1, 1], [1, 1], [1, 1, 1], [1, 1, 1]]
     assert concatenated_output["stop_reasons"] == ["stop", "stop", "stop", "stop"]
+    assert concatenated_output["rollout_logprobs"] == [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]]
 
 
 def test_get_metrics_from_generator_output():
@@ -288,6 +321,7 @@ def test_get_metrics_from_generator_output():
         "rewards": [1.0, 2.0],
         "loss_masks": [[1, 1], [1, 1]],
         "stop_reasons": ["stop", "stop"],
+        "rollout_logprobs": None,
     }
     uids = ["a", "b"]
     avg_score, pass_at_n = get_metrics_from_generator_output(generator_output, uids)
@@ -444,7 +478,7 @@ async def test_length_limit_exceeded_during_conversation(
     extras = {"test": "value"}
     max_input_length = 20  # Low limit to trigger length exceeded
 
-    response_ids, reward, stop_reason, loss_mask, prompt_token_ids = await generator.agent_loop(
+    response_ids, reward, stop_reason, loss_mask, prompt_token_ids, rollout_logprobs = await generator.agent_loop(
         prompt, "test_env", extras, max_tokens=100, max_input_length=max_input_length
     )
 
@@ -523,7 +557,7 @@ async def test_multi_turn_response_truncation(
     prompt = [{"role": "user", "content": "Initial prompt"}]
     extras = {}
 
-    response_ids, _, stop_reason, loss_mask, _ = await generator.agent_loop(
+    response_ids, _, stop_reason, loss_mask, _, _ = await generator.agent_loop(
         prompt, "test_env", extras, max_tokens=max_tokens_from_llm, max_input_length=max_input_len
     )
 
@@ -603,7 +637,7 @@ async def test_postprocessed_action_used(
     prompt = [{"role": "user", "content": "Initial input"}]
     env_extras = {}
 
-    response_ids, reward, stop_reason, loss_mask, prompt_ids = await generator.agent_loop(
+    response_ids, reward, stop_reason, loss_mask, prompt_ids, _ = await generator.agent_loop(
         prompt, "test_env", env_extras, max_tokens=20, max_input_length=50
     )
 

@@ -219,6 +219,20 @@ def validate_cfg(cfg: DictConfig):
     if cfg.generator.backend == "sglang" and not cfg.generator.use_conversation_multi_turn:
         raise NotImplementedError("`use_conversation_multi_turn=False` is not supported for SGLang backend")
 
+    if cfg.trainer.algorithm.use_tis:
+        if cfg.trainer.algorithm.tis_imp_ratio_cap <= 0:
+            raise ValueError(
+                f"If `trainer.algorithm.use_tis` is `True` then `cfg.trainer.algorithm.tis_imp_ratio_cap` should be > 0, got {cfg.trainer.algorithm.tis_imp_ratio_cap }"
+            )
+
+        if cfg.generator.backend == "sglang":
+            raise NotImplementedError("`trainer.algorithm.use_tis` doesn't support Sglang backend, please use vLLM")
+
+        if not cfg.generator.batched or cfg.generator.max_turns > 1:
+            raise ValueError(
+                "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
+            )
+
 
 @ray.remote
 def get_all_env_variables():

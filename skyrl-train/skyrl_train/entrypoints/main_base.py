@@ -276,6 +276,9 @@ class BasePPOExp:
 @ray.remote(num_cpus=1)
 def skyrl_entrypoint(cfg: DictConfig):
     # make sure that the training loop is not run on the head node.
+    if os.environ.get("FLASHRL_CONFIG", None):
+        # will patch vllm now
+        pass
     exp = BasePPOExp(cfg)
     exp.run()
 

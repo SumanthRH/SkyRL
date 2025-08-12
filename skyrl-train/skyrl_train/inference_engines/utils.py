@@ -12,8 +12,9 @@ def get_vllm_sampling_params(sampling_params: DictConfig) -> Dict[str, Any]:
         "top_p": sampling_params.top_p,
         "top_k": sampling_params.top_k,
         "min_p": sampling_params.min_p,
+        "logprobs": 0 if sampling_params.get_logprobs else None,  # 0 + 1 -> chosen token
     }
-    exclude_keys = ["max_generate_length"]
+    exclude_keys = ["max_generate_length", "get_logprobs"]
     for key, value in sampling_params.items():
         if key not in vllm_sampling_params and key not in exclude_keys:
             # Convert OmegaConf ListConfig to regular list if needed

@@ -49,6 +49,11 @@ class SkyRLGymGenerator(GeneratorInterface):
         else:
             self.env_executor = None
 
+        if getattr(self.generator_cfg.sampling_params, "get_logprobs") and not self.generator_cfg.batched:
+            assert (
+                not self.use_conversation_multi_turn
+            ), "`use_conversation_multi_turn` must be False if `sampling_params.get_logprobs` is `True` and `batched` is `False`"
+
     async def agent_loop(
         self,
         prompt: ConversationType,
@@ -57,7 +62,7 @@ class SkyRLGymGenerator(GeneratorInterface):
         max_tokens: int,
         max_input_length: int,
         sampling_params: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[int], float, str, List[int], List[int]]:
+    ) -> Tuple[List[int], float, str, List[int], List[int], Optional[List[float]]]:
         """
         Multi-turn generation loop that executes a single trajectory.
 
@@ -73,6 +78,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             stop_reason: str
             loss_mask: List[int]
             prompt_token_ids: List[int]
+            rollout_logprobs: Optional[List[float]]
         """
 
         # Create a new environment instance
@@ -98,6 +104,7 @@ class SkyRLGymGenerator(GeneratorInterface):
 
         initial_prompt_length = len(input_ids)
         loss_mask = []
+        rollout_logprobs = []
 
         while not done:
             if self.use_conversation_multi_turn:
@@ -111,6 +118,12 @@ class SkyRLGymGenerator(GeneratorInterface):
             engine_output = await self.inference_engine_client.generate(engine_input)
             output = engine_output["responses"][0]
             stop_reason = engine_output["stop_reasons"][0]
+            response_logprobs: List[float] = (
+                engine_output["response_logprobs"][0] if engine_output.get("response_logprobs", None) else None
+            )
+            if response_logprobs:
+                rollout_logprobs += response_logprobs
+
             if self.env_executor is not None:
                 loop = asyncio.get_running_loop()
                 env_step_output: BaseTextEnvStepOutput = await loop.run_in_executor(self.env_executor, env.step, output)
@@ -128,7 +141,9 @@ class SkyRLGymGenerator(GeneratorInterface):
                     chat_history, chat_end_index, loss_mask, input_ids, output, new_obs
                 )
             else:
-                loss_mask, input_ids = self._update_engine_input_token_ids(output, new_obs, loss_mask, input_ids)
+                loss_mask, input_ids, rollout_logprobs = self._update_engine_input_token_ids(
+                    output, new_obs, loss_mask, input_ids, rollout_logprobs
+                )
 
             if len(input_ids) > max_input_length:
                 stop_reason = "length"
@@ -168,8 +183,9 @@ class SkyRLGymGenerator(GeneratorInterface):
             stop_reason = "length"
         response_ids = response_ids[:max_response_tokens]
         loss_mask = loss_mask[:max_response_tokens]
+        rollout_logprobs = rollout_logprobs[:max_response_tokens] if len(rollout_logprobs) else None
 
-        return response_ids, reward, stop_reason, loss_mask, prompt_ids
+        return response_ids, reward, stop_reason, loss_mask, prompt_ids, rollout_logprobs
 
     async def generate_batched(
         self,
@@ -207,11 +223,15 @@ class SkyRLGymGenerator(GeneratorInterface):
         engine_output = await self.inference_engine_client.generate(engine_input)
         responses = engine_output["responses"]
         stop_reasons = engine_output["stop_reasons"]
+        logprobs = engine_output.get("response_logprobs", None)
+        print("logprobs: ", logprobs is not None)
+
         truncated_responses = []
         rewards = []
         loss_masks = []
+        truncated_logprobs: Optional[List[List[float]]] = [] if logprobs is not None else None
 
-        for response, env in zip(responses, envs):
+        for i, (response, env) in enumerate(zip(responses, envs)):
             # step on function and compute reward
             env_step_output: BaseTextEnvStepOutput = env.step(response)
             reward = env_step_output["reward"]
@@ -223,6 +243,9 @@ class SkyRLGymGenerator(GeneratorInterface):
                 response_ids = response_ids[:max_tokens]
             loss_masks.append([1] * len(response_ids))
             truncated_responses.append(response_ids)
+            if logprobs is not None:
+                sample_logprobs = logprobs[i][: len(response_ids)]
+                truncated_logprobs.append(sample_logprobs)
 
             env.close()
 
@@ -240,6 +263,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             "loss_masks": loss_masks,
             "stop_reasons": stop_reasons,
             "rollout_metrics": rollout_metrics,
+            "rollout_logprobs": truncated_logprobs,
         }
 
         return generator_output
@@ -294,6 +318,10 @@ class SkyRLGymGenerator(GeneratorInterface):
         stop_reasons = sum([[output[2]] for output in all_outputs], [])
         loss_masks = sum([[output[3]] for output in all_outputs], [])
         prompt_token_ids = sum([[output[4]] for output in all_outputs], [])
+        if self.generator_cfg.sampling_params.get_logprobs:
+            rollout_logprobs = sum([[output[5]] for output in all_outputs], [])
+        else:
+            rollout_logprobs = None
 
         rollout_metrics = self._rollout_metrics(responses, rewards)
 
@@ -311,6 +339,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             "loss_masks": loss_masks,
             "stop_reasons": stop_reasons,
             "rollout_metrics": rollout_metrics,
+            "rollout_logprobs": rollout_logprobs,
         }
 
         return generator_output
@@ -461,7 +490,7 @@ class SkyRLGymGenerator(GeneratorInterface):
         return chat_history, chat_end_index, loss_mask, input_ids
 
     def _update_engine_input_token_ids(
-        self, output: str, new_obs: ConversationType, loss_mask: List[int], input_ids: List[int]
+        self, output: str, new_obs: ConversationType, loss_mask: List[int], input_ids: List[int], logprobs: List[float]
     ):
         """
         Update the loss mask and input ids given a new model response and observation.
@@ -508,6 +537,9 @@ class SkyRLGymGenerator(GeneratorInterface):
             for obs in new_obs:
                 obs_tokens = self.tokenizer.encode(obs["content"], add_special_tokens=False)
                 loss_mask += [0] * len(obs_tokens)
+                # logprobs for observation tokens doesn't matter since they will be masked out during loss computation
+                if logprobs:
+                    logprobs += [1] * len(obs_tokens)
                 input_ids += obs_tokens
 
-        return loss_mask, input_ids
+        return loss_mask, input_ids, logprobs
