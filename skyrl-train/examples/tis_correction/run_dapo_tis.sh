@@ -30,8 +30,6 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-export FLASHRL_CONFIG=bf16
-
 uv run --isolated --extra vllm --env-file .env -m examples.tis_correction.main_tis_dapo \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
@@ -65,10 +63,10 @@ uv run --isolated --extra vllm --env-file .env -m examples.tis_correction.main_t
   trainer.eval_before_train=false \
   trainer.eval_interval=5 \
   trainer.update_epochs_per_batch=1 \
-  trainer.train_batch_size=32 \
-  trainer.policy_mini_batch_size=32 \
-  trainer.micro_forward_batch_size_per_gpu=4 \
-  trainer.micro_train_batch_size_per_gpu=4 \
+  trainer.train_batch_size=1024 \
+  trainer.policy_mini_batch_size=256 \
+  trainer.micro_forward_batch_size_per_gpu=64 \
+  trainer.micro_train_batch_size_per_gpu=64 \
   trainer.ckpt_interval=10 \
   trainer.max_prompt_length=512 \
   generator.sampling_params.max_generate_length=$MAX_RESPONSE_LENGTH \

@@ -10,7 +10,6 @@ from omegaconf import DictConfig
 from skyrl_train.trainer import RayPPOTrainer
 from skyrl_train.utils import initialize_ray
 from skyrl_train.entrypoints.main_base import BasePPOExp, config_dir, validate_cfg
-import os
 
 from skyrl_train.generators.base import GeneratorOutput
 
@@ -82,9 +81,6 @@ class DAPOExp(BasePPOExp):
 
 @ray.remote(num_cpus=1)
 def skyrl_entrypoint(cfg: DictConfig):
-    if os.environ.get("FLASHRL_CONFIG", None):
-        # will patch vllm at import
-        pass
     exp = DAPOExp(cfg)
     exp.run()
 
