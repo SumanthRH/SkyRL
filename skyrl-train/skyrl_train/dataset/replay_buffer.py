@@ -90,7 +90,7 @@ class Experience:
         if self.action_mask is not None:
             self.action_mask = to(self.action_mask, device)
         if self.rollout_logprobs is not None:
-            self.rollout_logprobs = to(self.returns, device)
+            self.rollout_logprobs = to(self.rollout_logprobs, device)
 
     def pin_memory(self):
         self.sequences = pin_memory(self.sequences)
