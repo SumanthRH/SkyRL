@@ -65,7 +65,7 @@ class Experience:
     attention_mask: Optional[Integer[torch.LongTensor, "batch seq_len"]]
     loss_mask: Optional[Integer[torch.LongTensor, "batch response_len"]]
     action_mask: Optional[Integer[torch.Tensor, "batch response_len"]]
-    rollout_logprobs: Optional[Float[torch.Tensor, "batch rsponse_len"]]
+    rollout_logprobs: Optional[Float[torch.Tensor, "batch response_len"]]
     num_actions: int
     info: Optional[dict]
     kl: Optional[Float[torch.Tensor, "batch response_len"]] = None
