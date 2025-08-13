@@ -240,13 +240,18 @@ def validate_cfg(cfg: DictConfig):
             raise NotImplementedError("`trainer.algorithm.use_tis` doesn't support Sglang backend, please use vLLM")
 
         if not cfg.generator.batched:
-            if cfg.algorithm.use_tis:
-                raise ValueError(
-                    "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
-                )
+            raise ValueError(
+                "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
+            )
 
-            if cfg.generator.sampling_params.get_logprobs:
-                raise
+    if cfg.generator.sampling_params.get_logprobs:
+        if not cfg.generator.batched:
+            raise NotImplementedError(
+                "Async generation with `generator.batched=false` doesn't support `sampling_params.get_logprobs`"
+            )
+
+        if not cfg.generator.run_engines_locally:
+            raise NotImplementedError("Remote inference mode doesn't support `sampling_params.get_logprobs`")
 
 
 @ray.remote

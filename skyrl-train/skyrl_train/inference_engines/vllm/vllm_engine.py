@@ -192,6 +192,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
         """Common output processing logic."""
         responses: List[str] = []
         stop_reasons: List[str] = []
+        response_ids: List[List[int]] = []
         response_logprobs: Optional[List[List[float]]] = []
 
         for output in outputs:
@@ -202,6 +203,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
             resp = output.outputs[0]
             responses.append(resp.text)
             stop_reasons.append(resp.finish_reason)
+            response_ids.append(resp.token_ids)
             _logprobs = None
             if resp.logprobs:
                 _logprobs = []
@@ -219,6 +221,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
         return InferenceEngineOutput(
             responses=responses,
             stop_reasons=stop_reasons,
+            response_ids=response_ids,
             response_logprobs=response_logprobs,
         )
 

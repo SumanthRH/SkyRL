@@ -213,6 +213,7 @@ class SkyRLGymGenerator(GeneratorInterface):
         engine_input = InferenceEngineInput(prompts=init_prompts, sampling_params=sampling_params)
         engine_output = await self.inference_engine_client.generate(engine_input)
         responses = engine_output["responses"]
+        all_response_ids = engine_output["response_ids"]
         stop_reasons = engine_output["stop_reasons"]
         logprobs = engine_output.get("response_logprobs", None)
 
@@ -227,14 +228,18 @@ class SkyRLGymGenerator(GeneratorInterface):
             reward = env_step_output["reward"]
             rewards.append(reward)
 
-            # if batched then always single turn
-            response_ids = self.tokenizer(response)["input_ids"]
-            if len(response_ids) > max_tokens:
-                response_ids = response_ids[:max_tokens]
-            loss_masks.append([1] * len(response_ids))
-            truncated_responses.append(response_ids)
+            # NOTE (sumanthrh): We add a guard since response_ids is `None` with remote inference engine
+            if all_response_ids is not None:
+                sample_response_ids = all_response_ids[i]
+            else:
+                sample_response_ids = self.tokenizer.encode(response)["input_ids"]
+
+            if len(sample_response_ids) > max_tokens:
+                sample_response_ids = sample_response_ids[:max_tokens]
+            loss_masks.append([1] * len(sample_response_ids))
+            truncated_responses.append(sample_response_ids)
             if logprobs is not None:
-                sample_logprobs = logprobs[i][: len(response_ids)]
+                sample_logprobs = logprobs[i][: len(sample_response_ids)]
                 truncated_logprobs.append(sample_logprobs)
 
             env.close()
