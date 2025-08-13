@@ -34,7 +34,7 @@ def get_sglang_sampling_params(sampling_params: DictConfig) -> Dict[str, Any]:
         "top_k": sampling_params.top_k,
         "min_p": sampling_params.min_p,
     }
-    exclude_keys = ["max_generate_length"]
+    exclude_keys = ["max_generate_length", "get_logprobs"]
     for key, value in sampling_params.items():
         if key not in sglang_sampling_params and key not in exclude_keys:
             # Convert OmegaConf ListConfig to regular list if needed
