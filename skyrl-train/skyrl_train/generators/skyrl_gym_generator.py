@@ -232,7 +232,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             if all_response_ids is not None:
                 sample_response_ids = all_response_ids[i]
             else:
-                sample_response_ids = self.tokenizer.encode(response)["input_ids"]
+                sample_response_ids = self.tokenizer.encode(response)
 
             if len(sample_response_ids) > max_tokens:
                 sample_response_ids = sample_response_ids[:max_tokens]
