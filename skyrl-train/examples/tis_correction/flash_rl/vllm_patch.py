@@ -2,7 +2,7 @@
 Flash RL source code
 
 
-Reference: https://github.com/yaof20/Flash-RL  
+Modified from: https://github.com/yaof20/Flash-RL  for vllm 0.9.2
 """
 
 import os

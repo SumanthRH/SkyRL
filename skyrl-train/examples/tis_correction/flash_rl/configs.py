@@ -1,3 +1,10 @@
+"""
+Flash RL source code
+
+
+Configs modified from: https://github.com/yaof20/Flash-RL  
+"""
+
 from dataclasses import dataclass, field
 from typing import List
 

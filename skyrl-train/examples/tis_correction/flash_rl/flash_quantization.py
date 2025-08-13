@@ -2,7 +2,7 @@
 Flash RL source code
 
 
-Reference: https://github.com/yaof20/Flash-RL  
+All credits to: https://github.com/yaof20/Flash-RL  
 """
 
 import os
