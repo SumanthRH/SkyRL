@@ -220,14 +220,17 @@ class SGLangInferenceEngine(InferenceEngineInterface):
         """Process SGLang outputs to match expected format."""
         responses: List[str] = []
         stop_reasons: List[str] = []
+        response_ids: List[List[int]] = []
 
         for output in outputs:
             responses.append(output["text"])
             stop_reasons.append(output["meta_info"]["finish_reason"]["type"])
+            response_ids.append(output["output_ids"])
 
         return InferenceEngineOutput(
             responses=responses,
             stop_reasons=stop_reasons,
+            response_ids=response_ids,
         )
 
     async def generate(self, input_batch: InferenceEngineInput) -> InferenceEngineOutput:

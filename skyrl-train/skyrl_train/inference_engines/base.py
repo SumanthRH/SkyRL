@@ -15,6 +15,7 @@ class InferenceEngineInput(TypedDict):
 
 class InferenceEngineOutput(TypedDict):
     responses: List[str]
+    response_ids: List[List[int]]
     stop_reasons: List[str]
     response_logprobs: Optional[List[List[float]]]
 

@@ -7,7 +7,7 @@ set -x
 # bash examples/algorithms/dapo/run_dapo_gsm8k.sh
 
 DATA_DIR="$HOME/data/gsm8k"
-NUM_GPUS=4
+NUM_GPUS=2
 LOGGER="wandb"  # change to "console" to print to stdout
 
 # main DAPO parameters
@@ -30,7 +30,7 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-uv run --isolated --extra vllm -m examples.tis_correction.main_tis_dapo \
+uv run --isolated --extra vllm --extra flashrl --env-file examples/tis_correction/.env.flashrl -m examples.tis_correction.main_tis_dapo \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
@@ -59,14 +59,14 @@ uv run --isolated --extra vllm -m examples.tis_correction.main_tis_dapo \
   generator.num_inference_engines=$NUM_GPUS \
   generator.inference_engine_tensor_parallel_size=1 \
   trainer.epochs=20 \
-  trainer.eval_batch_size=1024 \
+  trainer.eval_batch_size=32 \
   trainer.eval_before_train=false \
   trainer.eval_interval=5 \
   trainer.update_epochs_per_batch=1 \
-  trainer.train_batch_size=1024 \
-  trainer.policy_mini_batch_size=256 \
-  trainer.micro_forward_batch_size_per_gpu=64 \
-  trainer.micro_train_batch_size_per_gpu=64 \
+  trainer.train_batch_size=32 \
+  trainer.policy_mini_batch_size=32 \
+  trainer.micro_forward_batch_size_per_gpu=4 \
+  trainer.micro_train_batch_size_per_gpu=4 \
   trainer.ckpt_interval=10 \
   trainer.max_prompt_length=512 \
   generator.sampling_params.max_generate_length=$MAX_RESPONSE_LENGTH \

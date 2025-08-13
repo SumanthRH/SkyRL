@@ -139,6 +139,16 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
     """Base class containing shared logic between sync and async VLLM engines."""
 
     def __init__(self, *args, bundle_indices: list = None, **kwargs):
+
+        # flash rl related patch
+        if os.environ.get("FLASHRL_CONFIG", None):
+            # flash rl will patch vllm at import time
+            # hack: this requires executing from the skyrl-train working directory
+            # there is no other way for this module to be discoverable inside vllm engine
+            from examples.tis_correction.flash_rl import apply_patch
+
+            apply_patch()
+
         setup_envvars_for_vllm(kwargs, bundle_indices)
         vllm_v1_disable_multiproc = kwargs.pop("vllm_v1_disable_multiproc", False)
         if vllm_v1_disable_multiproc or vllm.__version__ == "0.8.2":
@@ -192,6 +202,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
         """Common output processing logic."""
         responses: List[str] = []
         stop_reasons: List[str] = []
+        response_ids: List[List[int]] = []
         response_logprobs: Optional[List[List[float]]] = []
 
         for output in outputs:
@@ -202,6 +213,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
             resp = output.outputs[0]
             responses.append(resp.text)
             stop_reasons.append(resp.finish_reason)
+            response_ids.append(resp.token_ids)
             _logprobs = None
             if resp.logprobs:
                 _logprobs = []
@@ -211,6 +223,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
                     logprob = token_logprobs[token_id].logprob
                     _logprobs.append(logprob)
                     del token_logprobs
+                print(f"response length: {len(resp.token_ids)}, logprobs: {len(_logprobs)}")
             response_logprobs.append(_logprobs)
 
         if len(response_logprobs) and response_logprobs[0] is None:
@@ -218,6 +231,7 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
 
         return InferenceEngineOutput(
             responses=responses,
+            response_ids=response_ids,
             stop_reasons=stop_reasons,
             response_logprobs=response_logprobs,
         )
