@@ -10,8 +10,16 @@ from typing import List
 from omegaconf import DictConfig
 from skyrl_train.trainer import RayPPOTrainer
 from skyrl_train.utils import initialize_ray
-from skyrl_train.entrypoints.main_base import BasePPOExp, config_dir, validate_cfg
-
+from skyrl_train.entrypoints.main_base import (
+    BasePPOExp,
+    config_dir,
+    validate_cfg,
+    create_ray_wrapped_inference_engines_from_config,
+    create_remote_inference_engines_from_config,
+)
+from skyrl_train.inference_engines.inference_engine_client import InferenceEngineClient
+from skyrl_train.generators.base import GeneratorInterface
+from loguru import logger
 from skyrl_train.generators.base import GeneratorOutput
 
 
@@ -78,6 +86,61 @@ class DAPOTrainer(RayPPOTrainer):
 class DAPOExp(BasePPOExp):
     def get_trainer(self, *args, **kwargs):
         return DAPOTrainer(*args, **kwargs)
+
+    def _setup_trainer(self):
+        """Setup and return the trainer.
+
+        Instantiates the trainer and all the associated models for training.
+
+        Returns:
+            RayPPOTrainer: The trainer.
+        """
+        logger.info(self.get_cfg_as_str(self.cfg))
+        os.makedirs(self.cfg.trainer.export_path, exist_ok=True)
+        os.makedirs(self.cfg.trainer.ckpt_path, exist_ok=True)
+
+        if self.cfg.trainer.strategy == "deepspeed":
+            from skyrl_train.workers.deepspeed.deepspeed_worker import (
+                PolicyWorker,
+                CriticWorker,
+                RefWorker,
+                RewardWorker,
+            )
+        elif self.cfg.trainer.strategy in ("fsdp", "fsdp2"):
+            from skyrl_train.workers.fsdp.fsdp_worker import PolicyWorker, CriticWorker, RefWorker, RewardWorker
+        else:
+            raise ValueError(f"Unknown strategy type: {self.cfg.trainer.strategy}")
+
+        # NOTE (sumanthrh): Instantiate tracker before trainer init.
+        # We have custom validation before this step to give better error messages.
+        tracker = self.get_tracker()
+
+        tokenizer = self.tokenizer
+        if self.cfg.generator.run_engines_locally:
+            inference_engines = create_ray_wrapped_inference_engines_from_config(self.cfg, self.colocate_pg, tokenizer)
+        else:
+            inference_engines = create_remote_inference_engines_from_config(self.cfg)
+
+        inference_engine_client = InferenceEngineClient(inference_engines)
+
+        generator: GeneratorInterface = self.get_generator(self.cfg, tokenizer, inference_engine_client)
+
+        breakpoint()
+
+        trainer = self.get_trainer(
+            cfg=self.cfg,
+            tracker=tracker,
+            tokenizer=tokenizer,
+            train_dataset=self.train_dataset,
+            eval_dataset=self.eval_dataset,
+            inference_engine_client=inference_engine_client,
+            generator=generator,
+            colocate_pg=self.colocate_pg,
+        )
+
+        # Build the models
+        trainer.build_models(PolicyWorker, CriticWorker, RefWorker, RewardWorker)
+        return trainer
 
 
 @ray.remote(num_cpus=1)

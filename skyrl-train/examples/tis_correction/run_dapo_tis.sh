@@ -30,7 +30,7 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-uv run --isolated --extra vllm --extra flashrl --env-file examples/tis_correction/.env.flashrl -m examples.tis_correction.main_tis_dapo \
+uv run --isolated --extra vllm --env-file examples/tis_correction/.env.flashrl -m examples.tis_correction.main_tis_dapo \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
@@ -76,13 +76,13 @@ uv run --isolated --extra vllm --extra flashrl --env-file examples/tis_correctio
   generator.backend=vllm \
   generator.run_engines_locally=true \
   generator.weight_sync_backend=nccl \
-  generator.async_engine=true \
+  generator.async_engine=false \
   generator.batched=true \
   environment.env_class=gsm8k \
   generator.n_samples_per_prompt=5 \
   generator.gpu_memory_utilization=0.8 \
   trainer.logger="$LOGGER" \
-  trainer.project_name="gsm8k" \
+  trainer.project_name="gsm8k_flashrl" \
   trainer.run_name="gsm8k_dapo_tis" \
   trainer.resume_mode=null \
   trainer.ckpt_path="$HOME/ckpts/gsm8k_1.5B_ckpt" \

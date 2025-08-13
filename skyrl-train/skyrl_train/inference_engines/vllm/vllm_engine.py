@@ -223,7 +223,6 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
                     logprob = token_logprobs[token_id].logprob
                     _logprobs.append(logprob)
                     del token_logprobs
-                print(f"response length: {len(resp.token_ids)}, logprobs: {len(_logprobs)}")
             response_logprobs.append(_logprobs)
 
         if len(response_logprobs) and response_logprobs[0] is None:
