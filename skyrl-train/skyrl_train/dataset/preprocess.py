@@ -125,8 +125,10 @@ def convert_prompts_responses_to_batch_tensors(
 
     logprobs_tensor = None
     if logprobs:
-        logprobs_tensor = torch.zeros_like(action_mask, dtype=torch.float)
-        for i, sample_logprobs in enumerate(logprobs):
-            logprobs_tensor[i, : len(sample_logprobs)] = torch.tensor(sample_logprobs)
+        max_output_len = action_mask.size(1)
+        padded_logprobs = [
+            sample_logprobs + [0.0] * (max_output_len - len(sample_logprobs)) for sample_logprobs in logprobs
+        ]
+        logprobs_tensor = torch.tensor(padded_logprobs, dtype=torch.float)
 
     return sequences, attention_mask, action_mask, ret_custom_rewards, ret_loss_masks, logprobs_tensor

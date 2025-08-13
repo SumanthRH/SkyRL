@@ -53,7 +53,9 @@ def mock_llm():
         return {
             "responses": ["mocked output"] * num_prompts,
             "stop_reasons": ["stop"] * num_prompts,
+            # say response gets tokenized to 3 tokens
             "response_logprobs": [[0.1, 0.2, 0.3]] * num_prompts,
+            "response_ids": [[1, 10, 12]] * num_prompts,
         }
 
     mock.generate = AsyncMock(side_effect=mock_generate)
@@ -75,6 +77,7 @@ def mock_generator_cfg():
     cfg = MagicMock()
     cfg.sampling_params.max_generate_length = 5
     cfg.sampling_params.get_logprobs = False
+    cfg.apply_overlong_filtering = False
     cfg.max_input_length = 512
     cfg.batched = True
     cfg.max_turns = 1
@@ -262,10 +265,12 @@ async def test_generate_batched(mock_make, mock_tokenizer, mock_llm, mock_env, m
 
     generator_output: GeneratorOutput = await generator.generate(input_batch)
 
-    assert generator_output["response_ids"][0] == [1, 2, 3, 4]
+    # uses output from llm directly
+    assert generator_output["response_ids"][0] == [1, 10, 12]
+
     assert generator_output["rewards"][0] == 1.0
     assert generator_output["stop_reasons"][0] == "stop"
-    assert generator_output["loss_masks"][0] == [1, 1, 1, 1]
+    assert generator_output["loss_masks"][0] == [1, 1, 1]
 
 
 def test_generator_output_concatenation():
@@ -750,7 +755,12 @@ async def test_apply_overlong_filtering_non_batched(
 @pytest.mark.asyncio
 @patch("skyrl_gym.make")
 async def test_apply_overlong_filtering_batched(
-    mock_make, mock_tokenizer, mock_llm, mock_env, mock_generator_cfg, mock_env_cfg
+    mock_make,
+    mock_tokenizer,
+    mock_llm,
+    mock_env,
+    mock_generator_cfg,
+    mock_env_cfg,
 ):
     """
     Test that apply_overlong_filtering correctly zeroes out loss masks for truncated trajectories
@@ -766,7 +776,13 @@ async def test_apply_overlong_filtering_batched(
 
     # Mock out environment and inference engine generation.
     mock_env.step.side_effect = lambda x: BaseTextEnvStepOutput(observations=[], reward=1.0, done=True, metadata={})
-    mock_llm.generate = AsyncMock(return_value={"responses": ["truncated response"], "stop_reasons": ["length"]})
+    mock_llm.generate = AsyncMock(
+        return_value={
+            "responses": ["truncated response"],
+            "stop_reasons": ["length"],
+            "response_ids": [[10, 11, 12, 13]],
+        }
+    )
 
     def mock_apply_chat_template(messages, **kwargs):
         if kwargs.get("tokenize", True):

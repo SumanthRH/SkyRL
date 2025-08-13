@@ -229,8 +229,8 @@ class SGLangInferenceEngine(InferenceEngineInterface):
 
         return InferenceEngineOutput(
             responses=responses,
-            stop_reasons=stop_reasons,
             response_ids=response_ids,
+            stop_reasons=stop_reasons,
         )
 
     async def generate(self, input_batch: InferenceEngineInput) -> InferenceEngineOutput:

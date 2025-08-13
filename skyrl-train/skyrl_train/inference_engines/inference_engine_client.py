@@ -79,8 +79,8 @@ class InferenceEngineClient(InferenceEngineInterface):
         n = len(prompts_or_tokens)
         responses: list[str] = [""] * n
         stop_reasons: list[str] = [""] * n
-        response_logprobs = [0] * n
-        response_ids = [0] * n
+        response_logprobs = [[0]] * n
+        response_ids = [[0]] * n
         # a bit hacky for now
         add_resp_logprobs = False
 
@@ -129,6 +129,7 @@ class InferenceEngineClient(InferenceEngineInterface):
         # Flatten results
         responses = []
         stop_reasons = []
+        response_ids = []
         response_logprobs = []
         response_ids = []
         for output in all_outputs:
