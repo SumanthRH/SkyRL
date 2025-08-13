@@ -50,7 +50,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             self.env_executor = None
 
         if getattr(self.generator_cfg.sampling_params, "get_logprobs") and not self.generator_cfg.batched:
-            "`sampling_params.get_logprobs` should be `False` if `batched` is `False`"
+            raise ValueError("`sampling_params.get_logprobs` should be `False` if `batched` is `False`")
 
     async def agent_loop(
         self,
