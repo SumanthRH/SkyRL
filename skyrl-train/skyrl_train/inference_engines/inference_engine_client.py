@@ -129,16 +129,19 @@ class InferenceEngineClient(InferenceEngineInterface):
         # Flatten results
         responses = []
         stop_reasons = []
+        response_ids = []
         response_logprobs = []
         for output in all_outputs:
             responses.extend(output["responses"])
             stop_reasons.extend(output["stop_reasons"])
+            response_ids.extend(output["response_ids"])
             if output.get("response_logprobs", None):
                 response_logprobs.extend(output["response_logprobs"])
 
         return InferenceEngineOutput(
             responses=responses,
             stop_reasons=stop_reasons,
+            response_ids=response_ids,
             response_logprobs=response_logprobs if len(response_logprobs) else None,
         )
 
