@@ -224,14 +224,24 @@ def validate_cfg(cfg: DictConfig):
             raise ValueError(
                 f"If `trainer.algorithm.use_tis` is `True` then `cfg.trainer.algorithm.tis_imp_ratio_cap` should be > 0, got {cfg.trainer.algorithm.tis_imp_ratio_cap }"
             )
+        if not cfg.generator.sampling_params.get_logprobs:
+            logger.warning(
+                "`generator.sampling_params.get_logprobs` is `False` but `trainer.algorithm.use_tis` is `True`. Setting `get_logprobs` to `True`."
+            )
+            # just set to true for better user exp
+            cfg.generator.sampling_params.get_logprobs = True
 
         if cfg.generator.backend == "sglang":
             raise NotImplementedError("`trainer.algorithm.use_tis` doesn't support Sglang backend, please use vLLM")
 
-        # if not cfg.generator.batched or cfg.generator.max_turns > 1:
-        #     raise ValueError(
-        #         "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
-        #     )
+        if not cfg.generator.batched:
+            if cfg.algorithm.use_tis:
+                raise ValueError(
+                    "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
+                )
+
+            if cfg.generator.sampling_params.get_logprobs:
+                raise
 
 
 @ray.remote

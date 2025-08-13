@@ -50,9 +50,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             self.env_executor = None
 
         if getattr(self.generator_cfg.sampling_params, "get_logprobs") and not self.generator_cfg.batched:
-            assert (
-                not self.use_conversation_multi_turn
-            ), "`use_conversation_multi_turn` must be False if `sampling_params.get_logprobs` is `True` and `batched` is `False`"
+            "`sampling_params.get_logprobs` should be `False` if `batched` is `False`"
 
     async def agent_loop(
         self,
@@ -103,7 +101,7 @@ class SkyRLGymGenerator(GeneratorInterface):
 
         initial_prompt_length = len(input_ids)
         loss_mask = []
-        rollout_logprobs = []
+        rollout_logprobs = None
 
         while not done:
             if self.use_conversation_multi_turn:
@@ -117,11 +115,6 @@ class SkyRLGymGenerator(GeneratorInterface):
             engine_output = await self.inference_engine_client.generate(engine_input)
             output = engine_output["responses"][0]
             stop_reason = engine_output["stop_reasons"][0]
-            response_logprobs: List[float] = (
-                engine_output["response_logprobs"][0] if engine_output.get("response_logprobs", None) else None
-            )
-            if response_logprobs:
-                rollout_logprobs += response_logprobs
 
             if self.env_executor is not None:
                 loop = asyncio.get_running_loop()
@@ -182,7 +175,6 @@ class SkyRLGymGenerator(GeneratorInterface):
             stop_reason = "length"
         response_ids = response_ids[:max_response_tokens]
         loss_mask = loss_mask[:max_response_tokens]
-        rollout_logprobs = rollout_logprobs[:max_response_tokens] if len(rollout_logprobs) else None
 
         return response_ids, reward, stop_reason, loss_mask, prompt_ids, rollout_logprobs
 
@@ -279,7 +271,7 @@ class SkyRLGymGenerator(GeneratorInterface):
         prompts = input_batch["prompts"]
         env_classes = input_batch["env_classes"]
         env_extras = input_batch["env_extras"]
-        sampling_params = input_batch.get("sampling_params", None)
+        sampling_params: Optional[dict] = input_batch.get("sampling_params", None)
         max_tokens = self.generator_cfg.sampling_params.max_generate_length
         max_input_length = self.generator_cfg.max_input_length
 
@@ -302,8 +294,6 @@ class SkyRLGymGenerator(GeneratorInterface):
                 )
             )
 
-        # TODO (erictang000): this is still synchronous RL - come back to this
-        # for supporting fully async RL
         all_outputs = await tqdm.gather(
             *tasks,
             desc="Generating Trajectories",
@@ -316,7 +306,15 @@ class SkyRLGymGenerator(GeneratorInterface):
         stop_reasons = sum([[output[2]] for output in all_outputs], [])
         loss_masks = sum([[output[3]] for output in all_outputs], [])
         prompt_token_ids = sum([[output[4]] for output in all_outputs], [])
-        if self.generator_cfg.sampling_params.get_logprobs:
+
+        if sampling_params is not None:
+            # sampling params will be a dict in the format of the inference engine backend
+            # TODO: this might have to change when we support logprobs for sglang
+            get_logprobs = sampling_params.get("logprobs", None) is not None
+        else:
+            get_logprobs = self.generator_cfg.sampling_params.get_logprobs
+
+        if get_logprobs:
             rollout_logprobs = sum([[output[5]] for output in all_outputs], [])
         else:
             rollout_logprobs = None
