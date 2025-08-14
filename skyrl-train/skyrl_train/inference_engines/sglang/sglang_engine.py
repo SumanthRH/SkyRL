@@ -235,9 +235,7 @@ class SGLangInferenceEngine(InferenceEngineInterface):
     async def generate(self, input_batch: InferenceEngineInput) -> InferenceEngineOutput:
         """Generate responses using SGLang engine."""
         token_ids_prompts, sampling_params = self._preprocess_prompts(input_batch)
-        print("came here")
         outputs = await self.engine.async_generate(input_ids=token_ids_prompts, sampling_params=sampling_params)
-        print("going out")
         return self._postprocess_outputs(outputs)
 
     async def init_weight_update_communicator(
