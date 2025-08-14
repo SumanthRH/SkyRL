@@ -113,7 +113,7 @@ class RayPPOTrainer:
             batch_size=batch_size,
             shuffle=True if is_train else False,
             collate_fn=dataset.collate_fn,
-            num_workers=8,
+            num_workers=0,
             drop_last=True if is_train else False,
             generator=seeded_generator,
         )
@@ -268,9 +268,13 @@ class RayPPOTrainer:
                         # 1.1 generation phase
                         with Timer("generate", self.all_timings):
                             generator_output: GeneratorOutput = asyncio.run(self.generate(generator_input))
+                            assert (
+                                generator_output["rollout_logprobs"] is not None
+                            ), f"Something went wrong , got keys: {generator_output.keys()}"
 
                         # dynamic sampling
                         if self.cfg.trainer.algorithm.dynamic_sampling.type is not None:
+                            breakpoint()
                             generator_output, uids, keep_sampling = self.handle_dynamic_sampling(generator_output, uids)
                             # update weights manager condition to ensure we trigger sleep only when we are not continuing sampling
                             weights_manager.update_condition(not keep_sampling)

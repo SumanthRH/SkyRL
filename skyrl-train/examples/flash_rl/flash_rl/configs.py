@@ -10,11 +10,9 @@ from typing import List
 
 
 def get_default_config(config_name: str):
-    if config_name == "fp8":
-        return FP8TensorConfig()
-    elif config_name == "fp8_channel":
+    if config_name == "fp8_channel":
         return FP8ChannelConfig()
-    elif config_name == "fp8_vllm":
+    elif config_name in ["fp8_vllm", "fp8"]:
         return FP8vLLMConfig()
     elif config_name == "bf16":
         return BF16Config()

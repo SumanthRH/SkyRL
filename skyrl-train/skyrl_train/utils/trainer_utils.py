@@ -506,7 +506,7 @@ def filter_generator_output(output: GeneratorOutput, kept_indices: List[int]) ->
         "stop_reasons": None,
         "rollout_metrics": output.get("rollout_metrics"),
         "rollout_logprobs": (
-            [output["rollout_logprobs"][i] for i in kept_indices] if output["rollout_logprobs"] else None
+            [output["rollout_logprobs"][i] for i in kept_indices] if output["rollout_logprobs"] is not None else None
         ),
     }
 

@@ -107,7 +107,6 @@ class WorkerWrap:
         del weight
 
     def update_weight_cuda_ipc(self, name: str, dtype: str, shape: List[int], ipc_handles: Dict[str, Any]):
-
         dtype = str_to_torch_dtype(dtype)
         device = torch.cuda.current_device()
         props = torch.cuda.get_device_properties(device)
@@ -139,15 +138,6 @@ class BaseVLLMInferenceEngine(InferenceEngineInterface):
     """Base class containing shared logic between sync and async VLLM engines."""
 
     def __init__(self, *args, bundle_indices: list = None, **kwargs):
-
-        # flash rl related patch
-        if os.environ.get("FLASHRL_CONFIG", None):
-            # flash rl will patch vllm at import time
-            # hack: this requires executing from the skyrl-train working directory
-            # there is no other way for this module to be discoverable inside vllm engine
-            from examples.tis_correction.flash_rl import apply_patch
-
-            apply_patch()
 
         setup_envvars_for_vllm(kwargs, bundle_indices)
         vllm_v1_disable_multiproc = kwargs.pop("vllm_v1_disable_multiproc", False)
@@ -279,6 +269,7 @@ class VLLMInferenceEngine(BaseVLLMInferenceEngine):
 
     async def update_named_weight(self, request: NamedWeightUpdateRequest):
         engine = self._get_engine()
+
         # Use IPC if handles are provided
         if request.get("extras") and "ipc_handles" in request["extras"]:
             return await asyncio.to_thread(

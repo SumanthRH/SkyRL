@@ -86,6 +86,8 @@ def concatenate_generator_outputs(generator_outputs: List[GeneratorOutput]) -> G
     assert len(generator_outputs) > 0
     has_rollout_logprobs = [output.get("rollout_logprobs") is not None for output in generator_outputs]
     if any(has_rollout_logprobs) and not all(has_rollout_logprobs):
+        print("oh no", [generator_output["rollout_logprobs"] for generator_output in generator_outputs])
+        breakpoint()
         raise ValueError(
             "generator outputs are expected to all have null rollout_logprobs or all non-null, but received a mix"
         )

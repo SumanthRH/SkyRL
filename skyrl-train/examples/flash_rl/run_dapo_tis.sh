@@ -7,14 +7,8 @@ set -x
 # bash examples/algorithms/dapo/run_dapo_gsm8k.sh
 
 DATA_DIR="$HOME/data/gsm8k"
-NUM_GPUS=4
+NUM_GPUS=2
 LOGGER="wandb"  # change to "console" to print to stdout
-
-# TIS parameters
-TIS_IMP_RATIO_CAP=2.0
-USE_TIS=true
-# returns rollout logprobs for the generated tokens; required for TIS
-LOGPROBS=0
 
 # main DAPO parameters
 EPS_CLIP_LOW=0.2
@@ -36,7 +30,7 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-uv run --isolated --extra vllm -m examples.tis_correction.main_tis_dapo \
+uv run --isolated --extra vllm --env-file examples/flash_rl/.env.flashrl -m examples.flash_rl.main_tis_dapo \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
@@ -51,28 +45,28 @@ uv run --isolated --extra vllm -m examples.tis_correction.main_tis_dapo \
   generator.apply_overlong_filtering=$APPLY_OVERLONG_FILTERING \
   generator.sampling_params.temperature=$TEMPERATURE \
   generator.sampling_params.top_p=$TOP_P \
-  generator.sampling_params.logprobs=$LOGPROBS \
+  generator.sampling_params.get_logprobs=true \
   generator.eval_sampling_params.top_p=$EVAL_TOP_P \
   trainer.algorithm.use_kl_loss=$USE_KL_LOSS \
   trainer.algorithm.clip_ratio_c=$CLIP_RATIO_C \
-  trainer.algorithm.use_tis=$USE_TIS \
-  trainer.algorithm.tis_imp_ratio_cap=$TIS_IMP_RATIO_CAP \
+  trainer.algorithm.use_tis=true \
+  trainer.algorithm.tis_imp_ratio_cap=2.0 \
   trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
   trainer.strategy=fsdp2 \
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
   trainer.placement.ref_num_gpus_per_node=$NUM_GPUS \
-  generator.num_inference_engines=$NUM_GPUS \
-  generator.inference_engine_tensor_parallel_size=1 \
+  generator.num_inference_engines=1 \
+  generator.inference_engine_tensor_parallel_size=2 \
   trainer.epochs=20 \
-  trainer.eval_batch_size=1024 \
+  trainer.eval_batch_size=32 \
   trainer.eval_before_train=false \
   trainer.eval_interval=5 \
   trainer.update_epochs_per_batch=1 \
-  trainer.train_batch_size=1024 \
-  trainer.policy_mini_batch_size=256 \
-  trainer.micro_forward_batch_size_per_gpu=64 \
-  trainer.micro_train_batch_size_per_gpu=64 \
+  trainer.train_batch_size=32 \
+  trainer.policy_mini_batch_size=32 \
+  trainer.micro_forward_batch_size_per_gpu=4 \
+  trainer.micro_train_batch_size_per_gpu=4 \
   trainer.ckpt_interval=10 \
   trainer.max_prompt_length=512 \
   generator.sampling_params.max_generate_length=$MAX_RESPONSE_LENGTH \
@@ -82,13 +76,13 @@ uv run --isolated --extra vllm -m examples.tis_correction.main_tis_dapo \
   generator.backend=vllm \
   generator.run_engines_locally=true \
   generator.weight_sync_backend=nccl \
-  generator.async_engine=true \
+  generator.async_engine=false \
   generator.batched=true \
   environment.env_class=gsm8k \
   generator.n_samples_per_prompt=5 \
   generator.gpu_memory_utilization=0.8 \
   trainer.logger="$LOGGER" \
-  trainer.project_name="gsm8k" \
+  trainer.project_name="gsm8k_flashrl" \
   trainer.run_name="gsm8k_dapo_tis" \
   trainer.resume_mode=null \
   trainer.ckpt_path="$HOME/ckpts/gsm8k_1.5B_ckpt" \

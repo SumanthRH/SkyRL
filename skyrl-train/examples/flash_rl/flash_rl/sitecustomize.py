@@ -1,15 +1,12 @@
-"""
-Flash RL source code
-
-
-All credits to: https://github.com/yaof20/Flash-RL  
-"""
-
-from loguru import logger
 import os
 import sys
 
-logger.add(sys.stdout, level=os.environ.get("FLASHRL_LOGGING_LEVEL", "INFO"))
+try:
+    from loguru import logger
+except Exception:
+    import logging
+
+    logger = logging.getLogger(__name__)
 
 
 def check_vllm_installed():
@@ -22,24 +19,33 @@ def check_vllm_installed():
         return False
 
 
-def check_dist_initialized():
-    """Check if distributed environment is initialized"""
-    try:
-        from torch.distributed import is_initialized
+def fanout_existing_imports():
+    from vllm.model_executor.model_loader import utils
 
-        return is_initialized()
-    except ImportError:
-        return False
+    orig = getattr(utils, "beforeflashrl_process_weights_after_loading", None)
+    hacked = utils.process_weights_after_loading
+    if not callable(orig) or not callable(hacked):
+        return
+    for name, mod in list(sys.modules.items()):
+        if not name.startswith("vllm.model_executor.model_loader"):
+            continue
+        for attr_name, attr_value in list(vars(mod).items()):
+            if attr_value is orig:
+                setattr(mod, attr_name, hacked)
+                logger.debug(f"[fanout] Replaced {name}.{attr_name} with hacked fn")
 
 
 def apply_patch():
+    from loguru import logger
+
     # Check if patching is needed based on environment variables
     if "FLASHRL_CONFIG" in os.environ and check_vllm_installed():
 
-        from .vllm_patch import patch_vllm_llm, patch_vllm_process_weights_after_loading
+        from examples.flash_rl.flash_rl.vllm_patch import patch_vllm_llm, patch_vllm_process_weights_after_loading
 
         # Patch the process_weights_after_loading function
         process_weights_status = patch_vllm_process_weights_after_loading()
+        fanout_existing_imports()
         logger.debug(f"Patching vllm process_weights_after_loading... status: {process_weights_status}")
 
         # Patch the LLM class
@@ -59,3 +65,6 @@ def apply_patch():
             logger.debug(f"Patching vllm lmhead to fp32... status: {patch_status}")
     else:
         logger.debug("Skipping the patching of vllm")
+
+
+apply_patch()
