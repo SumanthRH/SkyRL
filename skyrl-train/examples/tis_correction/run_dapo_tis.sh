@@ -10,6 +10,12 @@ DATA_DIR="$HOME/data/gsm8k"
 NUM_GPUS=4
 LOGGER="wandb"  # change to "console" to print to stdout
 
+# TIS parameters
+TIS_IMP_RATIO_CAP=2.0
+USE_TIS=true
+# returns rollout logprobs for the generated tokens; required for TIS
+LOGPROBS=0
+
 # main DAPO parameters
 EPS_CLIP_LOW=0.2
 EPS_CLIP_HIGH=0.28
@@ -45,12 +51,12 @@ uv run --isolated --extra vllm -m examples.tis_correction.main_tis_dapo \
   generator.apply_overlong_filtering=$APPLY_OVERLONG_FILTERING \
   generator.sampling_params.temperature=$TEMPERATURE \
   generator.sampling_params.top_p=$TOP_P \
-  generator.sampling_params.get_logprobs=true \
+  generator.sampling_params.logprobs=$LOGPROBS \
   generator.eval_sampling_params.top_p=$EVAL_TOP_P \
   trainer.algorithm.use_kl_loss=$USE_KL_LOSS \
   trainer.algorithm.clip_ratio_c=$CLIP_RATIO_C \
-  trainer.algorithm.use_tis=true \
-  trainer.algorithm.tis_imp_ratio_cap=2.0 \
+  trainer.algorithm.use_tis=$USE_TIS \
+  trainer.algorithm.tis_imp_ratio_cap=$TIS_IMP_RATIO_CAP \
   trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
   trainer.strategy=fsdp2 \

@@ -49,8 +49,8 @@ class SkyRLGymGenerator(GeneratorInterface):
         else:
             self.env_executor = None
 
-        if getattr(self.generator_cfg.sampling_params, "get_logprobs") and not self.generator_cfg.batched:
-            raise ValueError("`sampling_params.get_logprobs` should be `False` if `batched` is `False`")
+        if getattr(self.generator_cfg.sampling_params, "logprobs", None) is not None and not self.generator_cfg.batched:
+            raise ValueError("`sampling_params.logprobs` should be `None` if `batched` is `False`")
 
     async def agent_loop(
         self,
@@ -317,7 +317,7 @@ class SkyRLGymGenerator(GeneratorInterface):
             # TODO: this might have to change when we support logprobs for sglang
             get_logprobs = sampling_params.get("logprobs", None) is not None
         else:
-            get_logprobs = self.generator_cfg.sampling_params.get_logprobs
+            get_logprobs = self.generator_cfg.sampling_params.logprobs is not None
 
         if get_logprobs:
             rollout_logprobs = sum([[output[5]] for output in all_outputs], [])

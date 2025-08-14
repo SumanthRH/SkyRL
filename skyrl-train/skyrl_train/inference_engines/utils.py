@@ -12,9 +12,9 @@ def get_vllm_sampling_params(sampling_params: DictConfig) -> Dict[str, Any]:
         "top_p": sampling_params.top_p,
         "top_k": sampling_params.top_k,
         "min_p": sampling_params.min_p,
-        "logprobs": 0 if sampling_params.get_logprobs else None,  # 0 + 1 -> chosen token
+        "logprobs": sampling_params.logprobs,
     }
-    exclude_keys = ["max_generate_length", "get_logprobs"]
+    exclude_keys = ["max_generate_length"]
     for key, value in sampling_params.items():
         if key not in vllm_sampling_params and key not in exclude_keys:
             # Convert OmegaConf ListConfig to regular list if needed
@@ -34,7 +34,8 @@ def get_sglang_sampling_params(sampling_params: DictConfig) -> Dict[str, Any]:
         "top_k": sampling_params.top_k,
         "min_p": sampling_params.min_p,
     }
-    exclude_keys = ["max_generate_length", "get_logprobs"]
+    # logprobs not supported with sglang for now
+    exclude_keys = ["max_generate_length", "logprobs"]
     for key, value in sampling_params.items():
         if key not in sglang_sampling_params and key not in exclude_keys:
             # Convert OmegaConf ListConfig to regular list if needed

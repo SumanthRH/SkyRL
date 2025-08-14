@@ -69,7 +69,7 @@ async def test_skyrl_gym_generator_chat_templating_exact(model_name):
     # Create a mock generator config
     generator_cfg = DictConfig(
         {
-            "sampling_params": {"max_generate_length": 200, "get_logprobs": False},
+            "sampling_params": {"max_generate_length": 200, "logprobs": None},
             "max_input_length": 200,
             "batched": False,
             "max_turns": 3,

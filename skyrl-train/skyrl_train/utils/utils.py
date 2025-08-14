@@ -229,12 +229,12 @@ def validate_cfg(cfg: DictConfig):
             raise ValueError(
                 f"If `trainer.algorithm.use_tis` is `True` then `cfg.trainer.algorithm.tis_imp_ratio_cap` should be > 0, got {cfg.trainer.algorithm.tis_imp_ratio_cap }"
             )
-        if not cfg.generator.sampling_params.get_logprobs:
+        if cfg.generator.sampling_params.logprobs is None:
             logger.warning(
-                "`generator.sampling_params.get_logprobs` is `False` but `trainer.algorithm.use_tis` is `True`. Setting `get_logprobs` to `True`."
+                "`generator.sampling_params.logprobs` is `None` but `trainer.algorithm.use_tis` is `True`. Setting `logprobs` to `True`."
             )
-            # just set to true for better user exp
-            cfg.generator.sampling_params.get_logprobs = True
+            # just set to 0 for better user exp
+            cfg.generator.sampling_params.logprobs = 0
 
         if cfg.generator.backend == "sglang":
             raise NotImplementedError("`trainer.algorithm.use_tis` doesn't support Sglang backend, please use vLLM")
@@ -244,14 +244,20 @@ def validate_cfg(cfg: DictConfig):
                 "Gneration with `trainer.algorithm.use_tis` needs to be batched with only single turn generation"
             )
 
-    if cfg.generator.sampling_params.get_logprobs:
+    if cfg.generator.sampling_params.logprobs is not None:
+        assert isinstance(cfg.generator.sampling_params.logprobs, int)
+
+        if cfg.generator.sampling_params.logprobs > 0:
+            raise ValueError(
+                f"`logprobs` if set should be 0 i.e only for the chosen token, got {cfg.generator.sampling_params.logprobs}"
+            )
         if not cfg.generator.batched:
             raise NotImplementedError(
-                "Async generation with `generator.batched=false` doesn't support `sampling_params.get_logprobs`"
+                "Async generation with `generator.batched=false` doesn't support `sampling_params.logprobs`"
             )
 
         if not cfg.generator.run_engines_locally:
-            raise NotImplementedError("Remote inference mode doesn't support `sampling_params.get_logprobs`")
+            raise NotImplementedError("Remote inference mode doesn't support `sampling_params.logprobs`")
 
 
 @ray.remote

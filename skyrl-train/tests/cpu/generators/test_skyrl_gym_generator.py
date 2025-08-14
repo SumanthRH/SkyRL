@@ -76,7 +76,7 @@ def mock_env():
 def mock_generator_cfg():
     cfg = MagicMock()
     cfg.sampling_params.max_generate_length = 5
-    cfg.sampling_params.get_logprobs = False
+    cfg.sampling_params.logprobs = None
     cfg.apply_overlong_filtering = False
     cfg.max_input_length = 512
     cfg.batched = True
