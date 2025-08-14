@@ -220,23 +220,24 @@ class SGLangInferenceEngine(InferenceEngineInterface):
         """Process SGLang outputs to match expected format."""
         responses: List[str] = []
         stop_reasons: List[str] = []
-        response_ids: List[List[int]] = []
 
         for output in outputs:
             responses.append(output["text"])
             stop_reasons.append(output["meta_info"]["finish_reason"]["type"])
-            response_ids.append(output["output_ids"])
 
         return InferenceEngineOutput(
             responses=responses,
-            response_ids=response_ids,
+            # not supported with sglang yet
+            response_ids=None,
             stop_reasons=stop_reasons,
         )
 
     async def generate(self, input_batch: InferenceEngineInput) -> InferenceEngineOutput:
         """Generate responses using SGLang engine."""
         token_ids_prompts, sampling_params = self._preprocess_prompts(input_batch)
+        print("came here")
         outputs = await self.engine.async_generate(input_ids=token_ids_prompts, sampling_params=sampling_params)
+        print("going out")
         return self._postprocess_outputs(outputs)
 
     async def init_weight_update_communicator(

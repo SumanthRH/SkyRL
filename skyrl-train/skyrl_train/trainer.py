@@ -955,6 +955,18 @@ class RayPPOTrainer:
         training_input["values"] = values
         # rewards from the reward model
         training_input["rm_rewards"] = rewards  # `None` or torch.Tensor
+
+        if self.cfg.generator.sampling_params.logprobs is not None:
+            # calculates the difference in probs between inference and trainer components
+            prob_diff = (training_input["rollout_logprobs"].exp() - action_log_probs.exp()).abs()
+            prob_diff_mean = prob_diff.mean().item()
+            prob_diff_std = prob_diff.std().item()
+            self.all_metrics.update(
+                {
+                    "policy/rollout_train_prob_diff_mean": prob_diff_mean,
+                    "policy/rollout_train_prob_diff_std": prob_diff_std,
+                }
+            )
         return training_input
 
     def apply_reward_kl_penalty(

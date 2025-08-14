@@ -82,13 +82,16 @@ class InferenceEngineClient(InferenceEngineInterface):
         response_logprobs = [[0]] * n
         response_ids = [[0]] * n
         # a bit hacky for now
+        add_resp_ids = False
         add_resp_logprobs = False
 
         for indices, result in zip(indices_list, results):
             for local_idx, original_idx in enumerate(indices):
                 responses[original_idx] = result["responses"][local_idx]
                 stop_reasons[original_idx] = result["stop_reasons"][local_idx]
-                response_ids[original_idx] = result["response_ids"][local_idx]
+                if result.get("response_ids", None):
+                    add_resp_ids = True
+                    response_ids[original_idx] = result["response_ids"][local_idx]
                 if result.get("response_logprobs", None):
                     add_resp_logprobs = True
                     response_logprobs[original_idx] = result["response_logprobs"][local_idx]
@@ -96,7 +99,7 @@ class InferenceEngineClient(InferenceEngineInterface):
         return InferenceEngineOutput(
             responses=responses,
             stop_reasons=stop_reasons,
-            response_ids=response_ids,
+            response_ids=response_ids if add_resp_ids else None,
             response_logprobs=response_logprobs if add_resp_logprobs else None,
         )
 
@@ -134,14 +137,15 @@ class InferenceEngineClient(InferenceEngineInterface):
         for output in all_outputs:
             responses.extend(output["responses"])
             stop_reasons.extend(output["stop_reasons"])
-            response_ids.extend(output["response_ids"])
+            if output.get("response_ids", None):
+                response_ids.extend(output["response_ids"])
             if output.get("response_logprobs", None):
                 response_logprobs.extend(output["response_logprobs"])
 
         return InferenceEngineOutput(
             responses=responses,
             stop_reasons=stop_reasons,
-            response_ids=response_ids,
+            response_ids=response_ids if len(response_ids) else None,
             response_logprobs=response_logprobs if len(response_logprobs) else None,
         )
 
