@@ -5,7 +5,7 @@ from skyrl_train.inference_engines.base import (
     NamedWeightUpdateRequest,
 )
 import asyncio
-from typing import List, Any
+from typing import List, Any, Optional
 
 
 class InferenceEngineClient(InferenceEngineInterface):
@@ -79,8 +79,8 @@ class InferenceEngineClient(InferenceEngineInterface):
         n = len(prompts_or_tokens)
         responses: list[str] = [""] * n
         stop_reasons: list[str] = [""] * n
-        response_logprobs = [[0] for _ in range(n)]
-        response_ids = [[0] for _ in range(n)]
+        response_logprobs: List[Optional[List[float]]] = [None for _ in range(n)]
+        response_ids: List[Optional[List[float]]] = [None for _ in range(n)]
         # a bit hacky for now
         add_resp_ids = False
         add_resp_logprobs = False
@@ -95,6 +95,14 @@ class InferenceEngineClient(InferenceEngineInterface):
                 if result.get("response_logprobs", None):
                     add_resp_logprobs = True
                     response_logprobs[original_idx] = result["response_logprobs"][local_idx]
+
+        # something went wrong
+        if any([len(response) == 0 for response in responses]) or not all(
+            [isinstance(sample_ids, list) for sample_ids in response_ids]
+        ):
+            raise RuntimeError(
+                "Did not receive responses / response ids for some prompts. This should never happen. There is likely something wrong with the inference engine"
+            )
 
         return InferenceEngineOutput(
             responses=responses,

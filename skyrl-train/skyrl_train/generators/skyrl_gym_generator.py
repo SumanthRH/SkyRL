@@ -491,7 +491,12 @@ class SkyRLGymGenerator(GeneratorInterface):
         return chat_history, chat_end_index, loss_mask, input_ids
 
     def _update_engine_input_token_ids(
-        self, output: str, new_obs: ConversationType, loss_mask: List[int], input_ids: List[int], logprobs: List[float]
+        self,
+        output: str,
+        new_obs: ConversationType,
+        loss_mask: List[int],
+        input_ids: List[int],
+        logprobs: Optional[List[float]],
     ):
         """
         Update the loss mask and input ids given a new model response and observation.
