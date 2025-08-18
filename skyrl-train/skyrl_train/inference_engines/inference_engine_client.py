@@ -2,7 +2,7 @@ from skyrl_train.inference_engines.base import (
     InferenceEngineInterface,
     InferenceEngineInput,
     InferenceEngineOutput,
-    NamedWeightUpdateRequest,
+    NamedWeightsUpdateRequest,
 )
 import asyncio
 from typing import List, Any, Optional
@@ -192,8 +192,8 @@ class InferenceEngineClient(InferenceEngineInterface):
             rank_offset_count += engine.tp_size
         await asyncio.gather(*tasks)
 
-    async def update_named_weight(self, request: NamedWeightUpdateRequest):
-        return await self._run_on_all_engines("update_named_weight", request=request)
+    async def update_named_weights(self, request: NamedWeightsUpdateRequest):
+        return await self._run_on_all_engines("update_named_weights", request=request)
 
     async def reset_prefix_cache(self):
         return await self._run_on_all_engines("reset_prefix_cache")
