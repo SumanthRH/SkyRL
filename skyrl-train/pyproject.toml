@@ -46,6 +46,11 @@ conflicts = [
         { extra = "vllm" },
         { extra = "sglang" },
     ],
+    [
+        { extra = "vllm" },
+        { extra = "flashrl" },
+        { extra = "sglang" },
+    ]
 ]
 
 [tool.uv.sources]
@@ -92,7 +97,12 @@ sglang = [
     "torch==2.7.1",
     "torchvision",
 ]
-
+flashrl = [
+    "vllm @ git+https://github.com/SumanthRH/vllm.git@flashrl",
+    "torch==2.7.0",
+    "flashinfer-python",
+    "torchvision"
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
