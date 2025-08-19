@@ -184,9 +184,7 @@ class DeepSpeedPolicyWorkerBase(PolicyWorkerBase):
                             }
                         )
                         if current_size / (1024**3) > self.cfg.generator.weight_transfer_threshold_cuda_ipc_in_GB:
-                            await asyncio.create_task(
-                                inference_engine_client.update_named_weights(weights_update_request)
-                            )
+                            await inference_engine_client.update_named_weights(weights_update_request)
                             current_size = 0
                             weights_update_request = {"names": [], "dtypes": [], "shapes": [], "extras": []}
                             # force collect any sent tensors if possible to be memory efficient
