@@ -6,11 +6,6 @@ import torch
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from ray.util.placement_group import placement_group, PlacementGroupSchedulingStrategy, PlacementGroup
-from skyrl_train.utils.ppo_utils import (
-    AdvantageEstimatorRegistry,
-    PolicyLossRegistry,
-    sync_registries,
-)
 
 
 class Timer:
@@ -120,6 +115,8 @@ def validate_batch_sizes(cfg: DictConfig):
 
 
 def validate_cfg(cfg: DictConfig):
+    from .ppo_utils import AdvantageEstimatorRegistry, PolicyLossRegistry
+
     if cfg.generator.max_turns == 1:
         assert (
             cfg.generator.max_input_length == cfg.trainer.max_prompt_length
@@ -311,6 +308,10 @@ def get_physical_gpu_id():
 
 
 def initialize_ray(cfg: DictConfig):
+    from .ppo_utils import (
+        sync_registries,
+    )
+
     # TODO(sumanthrh): introduce a debug mode and add debugging flags like `CUDA_LAUNCH_BLOCKING` here
     env_vars = {}
 
