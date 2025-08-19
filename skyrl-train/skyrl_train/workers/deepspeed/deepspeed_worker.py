@@ -184,6 +184,7 @@ class DeepSpeedPolicyWorkerBase(PolicyWorkerBase):
                                 "ipc_handles": ipc_handles,
                             }
                         )
+                        current_size += weight.nbytes
                         if current_size / (1024**3) > self.cfg.generator.weight_transfer_threshold_cuda_ipc_in_GB:
                             await inference_engine_client.update_named_weights(weights_update_request)
                             current_size = 0

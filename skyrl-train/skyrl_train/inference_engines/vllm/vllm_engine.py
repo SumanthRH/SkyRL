@@ -103,7 +103,7 @@ class WorkerWrap:
             assert dtype == self.model_config.dtype, f"mismatch dtype: src {dtype}, dst {self.model_config.dtype}"
             weight = torch.empty(shape, dtype=dtype, device="cuda")
             torch.distributed.broadcast(weight, 0, group=self._model_update_group)
-            weight_list.append(((name, weight)))
+            weight_list.append((name, weight))
 
         self.model_runner.model.load_weights(weights=weight_list)
         for weight in weight_list:
