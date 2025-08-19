@@ -101,9 +101,10 @@ class VllmServer:
         @app.post("/update_weights")
         async def _update_weights(request: Request):
             data = await request.json()
-            names = data.get("name")
-            dtypes = data.get("dtype")
-            shapes = data.get("shape")
+            # engine expects a list of objects
+            names = [data.get("name")]
+            dtypes = [data.get("dtype")]
+            shapes = [data.get("shape")]
             await engine.collective_rpc(
                 "update_weights",
                 args=(names, dtypes, shapes),

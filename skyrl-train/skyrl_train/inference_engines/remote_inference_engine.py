@@ -123,9 +123,9 @@ class RemoteInferenceEngine(InferenceEngineInterface):
             raise ValueError(f"Invalid engine backend: {self.engine_backend}")
 
         async with aiohttp.ClientSession() as session:
-            name = request[0]["name"]
-            dtype = request[0]["dtypes"]
-            shape = request[0]["shape"]
+            name = request["names"][0]
+            dtype = request["dtypes"][0]
+            shape = request["shapes"][0]
 
             resp = await session.post(
                 f"{self.url}/{weight_update_method}",
