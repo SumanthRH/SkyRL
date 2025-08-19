@@ -170,6 +170,8 @@ class FSDPPolicyRayActorBase(PolicyWorkerBase):
 
                         current_size = 0
                         weights_update_request = {"names": [], "dtypes": [], "shapes": [], "extras": []}
+                        # force collect any sent tensors if possible to be memory efficient
+                        torch.cuda.ipc_collect()
                 torch.distributed.barrier()
                 torch.cuda.synchronize()
 
@@ -178,8 +180,6 @@ class FSDPPolicyRayActorBase(PolicyWorkerBase):
                 await asyncio.create_task(inference_engine_client.update_named_weights(weights_update_request))
                 current_size = 0
                 weights_update_request = {"names": [], "dtypes": [], "shapes": [], "extras": []}
-                # force collect any sent tensors if possible to be memory efficient
-                torch.cuda.ipc_collect()
             torch.distributed.barrier()
             torch.cuda.synchronize()
 
