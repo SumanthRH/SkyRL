@@ -154,7 +154,6 @@ class DeepSpeedPolicyWorkerBase(PolicyWorkerBase):
         else:
             from torch.multiprocessing.reductions import reduce_tensor
 
-            # we sent in batches of 1GB as an optimization
             weights_update_request = {"names": [], "dtypes": [], "shapes": [], "extras": []}
             current_size = 0
 
@@ -185,6 +184,8 @@ class DeepSpeedPolicyWorkerBase(PolicyWorkerBase):
                             }
                         )
                         current_size += weight.nbytes
+                        # We send in batches as an optimization
+                        # sync if threshold is reached
                         if current_size / (1024**3) > self.cfg.generator.weight_transfer_threshold_cuda_ipc_in_GB:
                             await inference_engine_client.update_named_weights(weights_update_request)
                             current_size = 0

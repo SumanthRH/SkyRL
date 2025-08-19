@@ -138,7 +138,6 @@ class FSDPPolicyRayActorBase(PolicyWorkerBase):
                 torch.distributed.barrier()
         # CUDA IPC
         else:
-            # we sent in batches of 1GB as an optimization
             weights_update_request = {"names": [], "dtypes": [], "shapes": [], "extras": []}
             current_size = 0
 
@@ -165,6 +164,7 @@ class FSDPPolicyRayActorBase(PolicyWorkerBase):
                     weights_update_request["dtypes"].append(self.cfg.generator.model_dtype)
                     weights_update_request["shapes"].append(param.shape)
                     weights_update_request["extras"].append({"ipc_handles": ipc_handles})
+                    # We send in batches as an optimization
                     # sync if threshold is reached
                     if current_size / (1024**3) > self.cfg.generator.weight_transfer_threshold_cuda_ipc_in_GB:
                         await inference_engine_client.update_named_weights(weights_update_request)
