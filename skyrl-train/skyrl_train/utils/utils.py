@@ -307,11 +307,16 @@ def get_physical_gpu_id():
     return str(props.uuid)
 
 
-def initialize_ray(cfg: DictConfig):
-    from .ppo_utils import (
-        sync_registries,
-    )
+def prepare_runtime_environment(cfg: DictConfig) -> dict[str, str]:
+    """
+    Prepare environment variables for Ray runtime environment.
 
+    Args:
+        cfg: Training config
+
+    Returns:
+        Dict[str, str]: Environment variables to be used in Ray runtime environment
+    """
     # TODO(sumanthrh): introduce a debug mode and add debugging flags like `CUDA_LAUNCH_BLOCKING` here
     env_vars = {}
 
@@ -339,16 +344,23 @@ def initialize_ray(cfg: DictConfig):
             env_vars["VLLM_USE_V1"] = "1"
             env_vars["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
 
-    max_num_gpus_per_node = max(
-        [
-            cfg.trainer.placement.policy_num_gpus_per_node,
-            cfg.trainer.placement.critic_num_gpus_per_node,
-            cfg.trainer.placement.ref_num_gpus_per_node,
-            cfg.trainer.placement.reward_num_gpus_per_node,
-        ]
-    )
+    # Use max of available GPU counts, defaulting to 1 if none found
+    gpu_counts = []
+    if hasattr(cfg.generator, "inference_engine_tensor_parallel_size"):
+        gpu_counts.append(cfg.generator.inference_engine_tensor_parallel_size)
+    if hasattr(cfg, "trainer") and hasattr(cfg.trainer, "placement"):
+        placement = cfg.trainer.placement
+        gpu_counts.extend(
+            [
+                placement.policy_num_gpus_per_node,
+                placement.critic_num_gpus_per_node,
+                placement.ref_num_gpus_per_node,
+                placement.reward_num_gpus_per_node,
+            ]
+        )
+    max_num_gpus_per_node = max(gpu_counts) if gpu_counts else 1
     if not peer_access_supported(max_num_gpus_per_node=max_num_gpus_per_node):
-        logger.info("Peer access is not supported on this node type, disabling P2P and SHM")
+        logger.info("Peer access is not supported on this node type, disabling NCCL P2P and SHM")
         env_vars["NCCL_P2P_DISABLE"] = "1"
         env_vars["NCCL_SHM_DISABLE"] = "1"
 
@@ -371,6 +383,22 @@ def initialize_ray(cfg: DictConfig):
         # For some reason the `LD_LIBRARY_PATH` is not exported to the worker with .env file.
         logger.info(f"Exporting `LD_LIBRARY_PATH` to ray runtime env: {os.environ['LD_LIBRARY_PATH']}")
         env_vars["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+
+    return env_vars
+
+
+def initialize_ray(cfg: DictConfig):
+    """
+    Initialize Ray cluster with prepared runtime environment.
+
+    Args:
+        cfg: Training config
+    """
+    from .ppo_utils import (
+        sync_registries,
+    )
+
+    env_vars = prepare_runtime_environment(cfg)
     ray.init(runtime_env={"env_vars": env_vars})
 
     # create the named ray actors for the registries to make available to all workers
