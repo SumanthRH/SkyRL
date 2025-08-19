@@ -160,7 +160,7 @@ generator:
   backend: "vllm"
   weight_sync_backend: "nccl"
   # if using cuda_ipc, we send in batches of this size in GB
-  weight_transfer_threshold_cuda_ipc_in_GB: 1.0
+  weight_transfer_threshold_cuda_ipc_GB: 1.0
   inference_engine_tensor_parallel_size: 4
   n_samples_per_prompt: 5
   async_engine: true

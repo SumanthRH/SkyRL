@@ -166,7 +166,7 @@ class FSDPPolicyRayActorBase(PolicyWorkerBase):
                     weights_update_request["extras"].append({"ipc_handles": ipc_handles})
                     # We send in batches as an optimization
                     # sync if threshold is reached
-                    if current_size / (1024**3) > self.cfg.generator.weight_transfer_threshold_cuda_ipc_in_GB:
+                    if current_size / (1024**3) > self.cfg.generator.weight_transfer_threshold_cuda_ipc_GB:
                         await inference_engine_client.update_named_weights(weights_update_request)
 
                         current_size = 0
