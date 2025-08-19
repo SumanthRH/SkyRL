@@ -112,7 +112,7 @@ class FSDPPolicyRayActorBase(PolicyWorkerBase):
                     shape = param.shape
 
                     update_weight_task = asyncio.create_task(
-                        inference_engine_client.update_named_weight(
+                        inference_engine_client.update_named_weights(
                             {
                                 "names": [name],
                                 "dtypes": [self.cfg.generator.model_dtype],
