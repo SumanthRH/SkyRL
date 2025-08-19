@@ -29,15 +29,14 @@ from skyrl_train.dataset.preprocess import (
 )
 from skyrl_train import utils
 from skyrl_train.utils import trainer_utils
-from skyrl_train.utils import (
-    Timer,
+from skyrl_train.utils import Timer, get_ray_pg_ready_with_timeout
+from skyrl_train.utils.ppo_utils import (
     compute_approx_kl,
     masked_mean,
-    normalize_advantages_dict,
-    get_ray_pg_ready_with_timeout,
     get_kl_controller,
     FixedKLController,
     AdaptiveKLController,
+    normalize_advantages_dict,
 )
 from skyrl_train.distributed.dispatch import MeshRank, concatenate_outputs_after_mesh_dispatch, ActorInfo
 from skyrl_train.workers.worker import PPORayActorGroup
