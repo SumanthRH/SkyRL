@@ -283,6 +283,9 @@ class VLLMInferenceEngine(BaseVLLMInferenceEngine):
         if "names" not in request:
             raise ValueError(f"Expected update weight request with 'names' entry, got keys: {request.keys()}")
 
+        if not len(request["names"]):
+            raise ValueError("Update weight request should have atleast one entry in 'names'")
+
         engine = self._get_engine()
         # Use IPC if handles are provided
         if request.get("extras") and "ipc_handles" in request["extras"][0]:
