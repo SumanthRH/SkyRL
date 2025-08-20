@@ -30,7 +30,7 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.flashrl -m examples.flash_rl.main_dapo_flashrl \
+uv run --isolated --extra flashrl --extra deepspeed --env-file examples/flash_rl/.env.flashrl -m examples.flash_rl.main_dapo_flashrl \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
@@ -53,7 +53,7 @@ uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.flashrl -m e
   trainer.algorithm.tis_imp_ratio_cap=2.0 \
   trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
-  trainer.strategy=fsdp2 \
+  trainer.strategy=deepspeed \
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
   trainer.placement.ref_num_gpus_per_node=$NUM_GPUS \
   generator.num_inference_engines=2 \
