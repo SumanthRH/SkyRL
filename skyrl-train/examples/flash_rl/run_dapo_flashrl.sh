@@ -7,7 +7,7 @@ set -x
 # bash examples/algorithms/dapo/run_dapo_gsm8k.sh
 
 DATA_DIR="$HOME/data/gsm8k"
-NUM_GPUS=8
+NUM_GPUS=2
 LOGGER="wandb"  # change to "console" to print to stdout
 
 # main DAPO parameters
@@ -30,9 +30,6 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-VLLM_COMMIT=c18b3b8e8bdcebaa150311d2c4911a6428480162
-VLLM_PRECOMPILED_WHEEL_LOCATION=https://wheels.vllm.ai/c18b3b8e8bdcebaa150311d2c4911a6428480162/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl
-
 uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.flashrl -m examples.flash_rl.main_dapo_flashrl \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
@@ -48,19 +45,19 @@ uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.flashrl -m e
   generator.apply_overlong_filtering=$APPLY_OVERLONG_FILTERING \
   generator.sampling_params.temperature=$TEMPERATURE \
   generator.sampling_params.top_p=$TOP_P \
-  generator.sampling_params.get_logprobs=true \
+  generator.sampling_params.logprobs=0 \
   generator.eval_sampling_params.top_p=$EVAL_TOP_P \
   trainer.algorithm.use_kl_loss=$USE_KL_LOSS \
   trainer.algorithm.clip_ratio_c=$CLIP_RATIO_C \
   trainer.algorithm.use_tis=true \
   trainer.algorithm.tis_imp_ratio_cap=2.0 \
-  trainer.policy.model.path="Qwen/Qwen3-14B" \
+  trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
   trainer.strategy=fsdp2 \
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
   trainer.placement.ref_num_gpus_per_node=$NUM_GPUS \
-  generator.num_inference_engines=4 \
-  generator.inference_engine_tensor_parallel_size=2 \
+  generator.num_inference_engines=2 \
+  generator.inference_engine_tensor_parallel_size=1 \
   trainer.epochs=20 \
   trainer.eval_batch_size=32 \
   trainer.eval_before_train=false \
