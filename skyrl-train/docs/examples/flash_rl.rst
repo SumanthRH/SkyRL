@@ -19,6 +19,12 @@ FlashRL + SkyRL
 
 SkyRL now supports an initial integration with FlashRL. Currently, we only support training with `online FP8 quantization <https://docs.vllm.ai/en/v0.9.2/features/quantization/fp8.html#online-dynamic-quantization>`_ in vLLM. You should simply specify ``FLASHRL_CONFIG=fp8_vllm`` in your environment variables and use the ``--extra flashrl`` flag when running the training script.
 
+
+.. warning::
+
+   FlashRL integration only supports single-turn training at the moment.
+
+
 How does it work?
 ~~~~~~~~~~~~~~~~~~
 
