@@ -52,11 +52,7 @@ def create_ray_wrapped_inference_engines_flashrl(
 
     assert not async_engine, "`async_engine` is not supported for FlashRL"
 
-    if backend == "vllm":
-        pass
-
-        # assert version.parse(vllm.__version__) >= version.parse("0.8.3"), "SkyRL-Train only supports vLLM >= 0.8.3"
-    else:
+    if backend != "vllm":
         raise ValueError(f"Unsupported FlashRL backend: {backend}")
 
     inference_engine_actors = []
