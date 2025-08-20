@@ -151,7 +151,6 @@ class DAPOExp(BasePPOExp):
         inference_engine_client = InferenceEngineClient(inference_engines)
 
         generator: GeneratorInterface = self.get_generator(self.cfg, tokenizer, inference_engine_client)
-        # breakpoint()
 
         trainer = self.get_trainer(
             cfg=self.cfg,
@@ -180,6 +179,9 @@ def skyrl_entrypoint(cfg: DictConfig):
 def main(cfg: DictConfig) -> None:
     # validate the arguments
     validate_cfg(cfg)
+
+    if not cfg.generator.run_engines_locally:
+        raise ValueError("FlashRL only supports colocated training.")
 
     initialize_ray(cfg)
     ray.get(skyrl_entrypoint.remote(cfg))

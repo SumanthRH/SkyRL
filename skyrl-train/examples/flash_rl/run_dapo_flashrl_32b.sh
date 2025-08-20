@@ -7,7 +7,7 @@ set -x
 # export WANDB_API_KEY=<your_key_here>
 # bash examples/flash_rl/run_dapo_flashrl_32b.sh
 
-DATA_DIR="/mnt/user_storage/data/gsm8k"
+DATA_DIR="$HOME/data/gsm8k"
 NUM_GPUS=16
 LOGGER="wandb"  # change to "console" to print to stdout
 
