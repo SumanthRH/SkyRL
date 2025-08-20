@@ -1,14 +1,13 @@
 set -x
 
-# Colocated DAPO training+generation for Qwen2.5-1.5B-Instruct on GSM8K with FP8 rollouts.
-# The configuration is tested on 2 H100 GPUs.
+# Colocated DAPO training+generation for Qwen2.5-1.5B-Instruct on DAPO training data and validate on AIME 2024.
 
-# uv run examples/gsm8k/gsm8k_dataset.py --output_dir $HOME/data/gsm8k
-# export WANDB_API_KEY=<your_key_here>
-# bash examples/flash_rl/run_dapo_flashrl.sh
+# uv run examples/algorithms/dapo/prepare_dapo_data.sh
 
-DATA_DIR="/mnt/user_storage/data/dapo"
-NUM_GPUS=2
+DATA_DIR="$HOME/data/dapo"
+TRAIN_FILE="$DATA_DIR/dapo-math-17k.parquet"
+TEST_FILE="$DATA_DIR/aime-2024.parquet"
+NUM_GPUS=4
 LOGGER="wandb"  # change to "console" to print to stdout
 
 # main DAPO parameters
@@ -29,11 +28,12 @@ TEMPERATURE=1.0
 TOP_P=1.0
 EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
-MAX_RESPONSE_LENGTH=1024
+MAX_PROMPT_LENGTH=$((1024 * 2))
+MAX_RESPONSE_LENGTH=$((1024 * 20))
 
-uv run --isolated --extra flashrl --extra deepspeed --env-file examples/flash_rl/.env.flashrl -m examples.flash_rl.main_dapo_flashrl \
-  data.train_data="['$DATA_DIR/aime-2024.parquet']" \
-  data.val_data="['$DATA_DIR/aime-2024.parquet']" \
+uv run --isolated --extra vllm -m examples.algorithms.dapo.main_dapo \
+  data.train_data="['$TRAIN_FILE']" \
+  data.val_data="['$TEST_FILE']" \
   trainer.algorithm.advantage_estimator="grpo" \
   trainer.algorithm.policy_loss_type="dual_clip" \
   +trainer.algorithm.overlong_buffer.len=$OVERLONG_BUFFER_LEN \
@@ -46,15 +46,12 @@ uv run --isolated --extra flashrl --extra deepspeed --env-file examples/flash_rl
   generator.apply_overlong_filtering=$APPLY_OVERLONG_FILTERING \
   generator.sampling_params.temperature=$TEMPERATURE \
   generator.sampling_params.top_p=$TOP_P \
-  generator.sampling_params.logprobs=0 \
   generator.eval_sampling_params.top_p=$EVAL_TOP_P \
   trainer.algorithm.use_kl_loss=$USE_KL_LOSS \
   trainer.algorithm.clip_ratio_c=$CLIP_RATIO_C \
-  trainer.algorithm.use_tis=true \
-  trainer.algorithm.tis_imp_ratio_cap=2.0 \
   trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
-  trainer.strategy=deepspeed \
+  trainer.strategy=fsdp2 \
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
   trainer.placement.ref_num_gpus_per_node=$NUM_GPUS \
   generator.num_inference_engines=$NUM_GPUS \
@@ -69,7 +66,7 @@ uv run --isolated --extra flashrl --extra deepspeed --env-file examples/flash_rl
   trainer.micro_forward_batch_size_per_gpu=64 \
   trainer.micro_train_batch_size_per_gpu=64 \
   trainer.ckpt_interval=10 \
-  trainer.max_prompt_length=512 \
+  trainer.max_prompt_length=$MAX_PROMPT_LENGTH \
   generator.sampling_params.max_generate_length=$MAX_RESPONSE_LENGTH \
   trainer.policy.optimizer_config.lr=1.0e-6 \
   trainer.policy.optimizer_config.weight_decay=0.1 \
@@ -77,15 +74,14 @@ uv run --isolated --extra flashrl --extra deepspeed --env-file examples/flash_rl
   generator.backend=vllm \
   generator.run_engines_locally=true \
   generator.weight_sync_backend=nccl \
-  generator.async_engine=false \
+  generator.async_engine=true \
   generator.batched=true \
-  environment.env_class=gsm8k \
+  environment.env_class=aime \
   generator.n_samples_per_prompt=5 \
-  generator.gpu_memory_utilization=0.6 \
+  generator.gpu_memory_utilization=0.8 \
   trainer.logger="$LOGGER" \
-  trainer.project_name="gsm8k_flashrl" \
-  trainer.run_name="gsm8k_dapo_flashrl_1.5B" \
+  trainer.project_name="aime" \
+  trainer.run_name="aime_dapo" \
   trainer.resume_mode=null \
-  trainer.ckpt_path="$HOME/ckpts/gsm8k_1.5B_ckpt" \
-  generator.enforce_eager=false \
+  trainer.ckpt_path="$HOME/ckpts/aime_1.5B_ckpt" \
   $@
