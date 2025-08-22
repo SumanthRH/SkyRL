@@ -3,12 +3,10 @@ FlashRL + SkyRL: Training with Quantized Rollouts
 
 In this example, we walk through how to train a model with quantized rollouts using `FlashRL <https://fengyao.notion.site/flash-rl>`_ and SkyRL.
 
-We provide an example for training Qwen2.5-1.5B-Instruct and Qwen3-32B with quantized rollouts. 
-
 What is FlashRL?
 ----------------
 
-FlashRL is a novel method that provides the first RL recipe with quantized rollout generation while preserving downstream performance. FlashRL consists of two main components:
+`FlashRL <https://fengyao.notion.site/flash-rl>`_ is a novel method that provides the first open-source RL recipe with quantized (Int8, FP8) rollout generation while preserving downstream performance. FlashRL consists of two main components:
 
 - Truncated Importance Sampling (TIS): In scalable RL frameworks, policy model and rollout are typically managed by different libraries/ frameworks (FSDP and vLLM, resp.), which leads to a mismatch between the probability distributions. TIS is a technique that solves the rollout and training mismatch problem by applying a token-level correction factor (based on the importance-sampling ratio) to the policy loss. 
 - Online Quantization Support: While vLLM has support for inference with quantized weights, it is tricky to use this for RL training. FlashRL also has patches for vLLM to support weight updates for FP8 and Int8 during training. 
@@ -28,14 +26,14 @@ SkyRL now has a native integration with FlashRL. Currently, we support training 
 How does it work?
 ~~~~~~~~~~~~~~~~~~
 
-At a high level, we sample generations from the inference engine with quantized weights (int8, fp8). We then compute advantages and loss functions. We apply the TIS correction factor to the policy loss to account for the difference in rollout and training probability distributions. On weight update, we sync the weights (in half precision) with the inference engine layer by layer. These weights are then quantized to the appropriate format (int8, fp8) before loading.
+At a high level, we sample generations from the inference engine with quantized weights (Int8, FP8). We then compute advantages and loss functions. We apply the TIS correction factor to the policy loss to account for the difference in rollout and training probability distributions. On weight update, we sync the weights (in half precision) with the inference engine layer by layer. These weights are then quantized to the appropriate format (Int8, FP8) before loading.
 
 Examples
 --------
 
 We provide examples for training with FP8 and Int8 rollouts for DAPO. The FlashRL related files are in ``skyrl_train/examples/flash_rl/`` folder. 
 
-For fp8, you simply need to specify ``FLASHRL_CONFIG=fp8_vllm`` in your environment variables. 
+For FP8, you simply need to specify ``FLASHRL_CONFIG=fp8_vllm`` in your environment variables. 
 
 For Int8, we need to provide calibration data. We leverage the provided calibration data from FlashRL for ``Qwen/Qwen2.5-0.5B-Instruct`` and ``Qwen/Qwen-32B`` models. You can simply specify the appropriate ``FLASHRL_CONFIG`` in your environment variables.
 
@@ -44,23 +42,24 @@ For Int8, we need to provide calibration data. We leverage the provided calibrat
 
 
 
-Training with Int8 on the DAPO dataset
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Training with Int8 rollouts with the DAPO recipe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-First, prepare and save the dataset in a chosen ``DATA_DIR``, run:
+First, prepare and save the dataset in a chosen ``DATA_DIR`` by running:
 
 .. code-block:: bash
     # execute from skyrl-train directory
 
     DATA_DIR="$HOME/data/dapo" bash examples/algorithms/dapo/prepare_dapo_data.sh
 
-We highlight some important 
+We highlight some important training parameters configured for FlashRL:
 
 .. code-block:: bash
-    :caption: Training configuration at ``examples/flash_rl/run_dapo_repro_flashrl_0.5b.sh``
+    :caption: Training configuration at ``examples/flash_rl/run_dapo_repro_flashrl_0.5b_int8.sh``
 
     # path for dataset (.parquet files) containing the prompts and metadata for each question
     DATA_DIR="$HOME/data/dapo"
+
     # TIS parameters
     USE_TIS=true
     TIS_IMP_RATIO_CAP=8.0
@@ -72,7 +71,7 @@ We highlight some important
         generator.sampling_params.logprobs=0 \
         ...
 
-Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0``` ensures that logprobs for the chosen tokens are returned by vLLM, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` env var in ``examples/flash_rl/.env.0.5b_int8``: 
+Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0``` ensures that logprobs for the chosen tokens are returned by the inference engine, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` environment variable in ``examples/flash_rl/.env.0.5b_int8``: 
 
 .. code-block:: bash
     :caption: Environment variables at ``examples/flash_rl/.env.0.5b_int8``
@@ -86,7 +85,7 @@ Here, we've configured training to use TIS with the importance sampling ratio ca
 Training with FP8
 ~~~~~~~~~~~~~~~~~~
 
-The configuration is similar to the Int8 example. The only difference is the ``FLASHRL_CONFIG`` env variable value in ``examples/flash_rl/.env.0.5b_fp8``. We provide an example for training on Qwen2.5-0.5B-Instruct with FP8 rollouts  at ``skyrl_train/examples/flash_rl/run_dapo_gsm8k_flashrl_0.5b_fp8.sh``.
+The configuration is similar to the Int8 example. The only difference is the value for ``FLASHRL_CONFIG`` in ``examples/flash_rl/.env.0.5b_fp8``. We provide an example for training on Qwen2.5-0.5B-Instruct with FP8 rollouts  at ``skyrl_train/examples/flash_rl/run_dapo_gsm8k_flashrl_0.5b_fp8.sh``.
 
 
 What does the ``FLASHRL_CONFIG`` do?
@@ -113,6 +112,6 @@ While most parameters are self-explanatory, the ``profile`` parameter is used to
 
 .. warning::
 
-   FlashRL integration is experimental. While generation times can improve for large models with quantization, we've observed that the time spent in weight syncing is much higher with FlashRL for fp8. This negates some of the benefits of fp8 inference. The slowdown is primarily due to slow weight quantization in vLLM's ``process_weights_after_loading`` function and we are working on improving this.
+   FlashRL integration is experimental. While generation times can improve for large models with quantization, we've observed that the time spent in weight syncing is much higher with FlashRL for FP8. This negates some of the benefits of FP8 inference. The slowdown is primarily due to slow weight quantization in vLLM's ``process_weights_after_loading`` function and we are working on improving this.
 
-   We recomment to use int8 quantization over fp8 if possible.
+   We recomment to use Int8 quantization over FP8 if possible.
