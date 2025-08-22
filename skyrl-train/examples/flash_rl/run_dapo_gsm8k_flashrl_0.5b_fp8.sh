@@ -7,7 +7,7 @@ set -x
 # export WANDB_API_KEY=<your_key_here>
 # bash examples/flash_rl/run_dapo_gsm8k_flashrl_0.5b_fp8.sh
 
-DATA_DIR="/mnt/user_storage/data/gsm8k"
+DATA_DIR="$HOME/data/gsm8k"
 NUM_GPUS=4
 LOGGER="wandb"  # change to "console" to print to stdout
 
@@ -19,7 +19,7 @@ DYNAMIC_SAMPLING_MAX_SAMPLE_BATCHES=30
 LOSS_REDUCTION="token_mean"
 # applies overlong filtering (but not soft overlong punishment)
 APPLY_OVERLONG_FILTERING=true
-# apply soft overlong punishment with custom trainer impl in main_dapo.py
+# apply soft overlong punishment with custom trainer impl
 OVERLONG_BUFFER_LEN=512
 OVERLONG_BUFFER_PENALTY_FACTOR=1.0
 
@@ -31,7 +31,6 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
-export LD_LIBRARY_PATH=/opt/amazon/efa/lib
 
 uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.fp8 -- python -m examples.flash_rl.main_dapo_flashrl \
   data.train_data="['$DATA_DIR/train.parquet']" \
