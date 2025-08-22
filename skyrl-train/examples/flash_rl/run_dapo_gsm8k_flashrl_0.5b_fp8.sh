@@ -87,7 +87,7 @@ uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.fp8 -- pytho
   generator.gpu_memory_utilization=0.6 \
   trainer.logger="$LOGGER" \
   trainer.project_name="gsm8k_flashrl" \
-  trainer.run_name="gsm8k_dapo_flashrl_0.5B_int8" \
+  trainer.run_name="gsm8k_dapo_flashrl_0.5B_fp8" \
   trainer.ckpt_path="$CKPT_PATH" \
   generator.enforce_eager=false \
   $@

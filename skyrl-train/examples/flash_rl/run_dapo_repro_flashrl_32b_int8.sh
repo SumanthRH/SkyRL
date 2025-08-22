@@ -1,13 +1,13 @@
 set -x
 
-# Colocated DAPO training+generation for Qwen3-32B on GSM8K with FP8 rollouts.
+# Colocated DAPO training+generation for Qwen3-32B on DAPO dataset with Int8 rollouts.
 # The configuration is tested on 2 8xH100 GPUs.
 
-# uv run examples/gsm8k/gsm8k_dataset.py --output_dir $HOME/data/gsm8k
+# DATA_DIR=$HOME/data/dapo bash examples/algorithms/dapo/prepare_dapo_data.sh
 # export WANDB_API_KEY=<your_key_here>
 # bash examples/flash_rl/run_dapo_repro_flashrl_32b_int8.sh
 
-DATA_DIR="$HOME/data/test_dapo"
+DATA_DIR="$HOME/data/dapo"
 NUM_GPUS=16
 LOGGER="wandb"  # change to "console" to print to stdout
 
@@ -19,7 +19,7 @@ DYNAMIC_SAMPLING_MAX_SAMPLE_BATCHES=30
 LOSS_REDUCTION="token_mean"
 # applies overlong filtering (but not soft overlong punishment)
 APPLY_OVERLONG_FILTERING=true
-# apply soft overlong punishment with custom trainer impl in main_dapo.py
+# apply soft overlong punishment with custom trainer impl in main_dapo_flashrl.py
 OVERLONG_BUFFER_LEN=4096
 OVERLONG_BUFFER_PENALTY_FACTOR=1.0
 

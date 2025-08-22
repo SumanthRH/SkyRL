@@ -1,6 +1,6 @@
 set -x
 
-# Colocated DAPO training+generation for Qwen2.5-0.5B-Instruct on GSM8K with FP8 rollouts.
+# Colocated DAPO training+generation for Qwen2.5-0.5B-Instruct on GSM8K with Int8 rollouts.
 # The configuration is tested on 4 H100 GPUs.
 
 # uv run --isolated examples/gsm8k/gsm8k_dataset.py --output_dir $HOME/data/gsm8k

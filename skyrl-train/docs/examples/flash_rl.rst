@@ -70,7 +70,7 @@ We highlight some important training parameters configured for FlashRL from our 
         generator.sampling_params.logprobs=0 \
         ...
 
-Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0``` ensures that logprobs for the chosen tokens are returned by the inference engine, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` environment variable in ``examples/flash_rl/.env.32b_int8``: 
+Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0`` ensures that logprobs for the chosen tokens are returned by the inference engine, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` environment variable in ``examples/flash_rl/.env.32b_int8``: 
 
 .. code-block:: bash
     :caption: Environment variables at ``examples/flash_rl/.env.32b_int8``
@@ -117,4 +117,4 @@ While most parameters are self-explanatory, the ``profile`` parameter is used to
 
    FlashRL integration is experimental. While generation times can improve for large models with quantization, we've observed that the time spent in weight syncing is much higher with FlashRL for FP8. This negates some of the benefits of FP8 inference. The slowdown is primarily due to slow weight quantization in vLLM's ``process_weights_after_loading`` function and we are working on improving this.
 
-   We recomment to use Int8 quantization over FP8 if possible.
+   We recommend to use Int8 quantization over FP8 if possible.

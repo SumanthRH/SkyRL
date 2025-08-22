@@ -1,13 +1,13 @@
 set -x
 
-# Colocated DAPO training+generation for Qwen2.5-1.5B-Instruct on GSM8K with FP8 rollouts.
+# Colocated DAPO training+generation for Qwen2.5-1.5B-Instruct on DAPO dataset with FP8 rollouts.
 # The configuration is tested on 2 H100 GPUs.
 
-# uv run --isolated examples/gsm8k/gsm8k_dataset.py --output_dir $HOME/data/gsm8k
+# DATA_DIR=$HOME/data/dapo bash examples/algorithms/dapo/prepare_dapo_data.sh
 # export WANDB_API_KEY=<your_key_here>
 # bash examples/flash_rl/run_dapo_repro_flashrl_0.5b_int8.sh
 
-DATA_DIR="$HOME/data/test_dapo"
+DATA_DIR="$HOME/data/dapo"
 NUM_GPUS=4
 LOGGER="wandb"  # change to "console" to print to stdout
 
