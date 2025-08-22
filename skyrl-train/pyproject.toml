@@ -106,7 +106,6 @@ flashrl = [
     "torch==2.7.0",
     "flashinfer-python",
     "torchvision",
-    # "lm_eval",
 ]
 
 [[tool.uv.index]]
