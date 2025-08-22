@@ -70,10 +70,10 @@ We highlight some important training parameters configured for FlashRL from our 
         generator.sampling_params.logprobs=0 \
         ...
 
-Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0`` ensures that logprobs for the chosen tokens are returned by the inference engine, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` environment variable in ``examples/flash_rl/.env.32b_int8``: 
+Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0`` ensures that logprobs for the chosen tokens are returned by the inference engine, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` environment variable in ``examples/flash_rl/.env.int8``: 
 
 .. code-block:: bash
-    :caption: Environment variables at ``examples/flash_rl/.env.32b_int8``
+    :caption: Environment variables at ``examples/flash_rl/.env.int8``
 
     FLASHRL_CONFIG=LiyuanLucasLiu/Qwen2.5-32B-quantized.w8a8/flashrl_config.yaml
     # FLASHRL_LOGGING_LEVEL=DEBUG <--- optional
