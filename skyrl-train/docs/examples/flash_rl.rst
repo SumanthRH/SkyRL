@@ -63,7 +63,7 @@ We highlight some important training parameters configured for FlashRL from our 
     USE_TIS=true
     TIS_IMP_RATIO_CAP=8.0
 
-    uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.0.5b_int8 -m examples.flash_rl.main_dapo_flashrl \
+    uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.int8 -m examples.flash_rl.main_dapo_flashrl \
         ...
         trainer.algorithm.use_tis=$USE_TIS \
         trainer.algorithm.tis_imp_ratio_cap=$TIS_IMP_RATIO_CAP \
