@@ -1,6 +1,6 @@
 set -x
 
-# Colocated DAPO training+generation for Qwen3-32B on DAPO dataset with Int8 rollouts.
+# Colocated DAPO training+generation for Qwen2.5-32B on the original DAPO dataset with Int8 rollouts.
 # The configuration is tested on 2 8xH100 GPUs.
 
 # DATA_DIR=$HOME/data/dapo bash examples/algorithms/dapo/prepare_dapo_data.sh
