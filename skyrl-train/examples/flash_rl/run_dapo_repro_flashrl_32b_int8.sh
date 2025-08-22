@@ -36,6 +36,8 @@ TIS_IMP_RATIO_CAP=8.0
 USE_TIS=true
 LOGPROBS=0
 
+CKPT_PATH="$HOME/ckpts/dapo_32b_ckpt"
+
 uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.int8 -m examples.flash_rl.main_dapo_flashrl \
   data.train_data="['$DATA_DIR/dapo-math-17k-cleaned.parquet']" \
   data.val_data="['$DATA_DIR/aime-2024-cleaned.parquet']" \
@@ -90,8 +92,7 @@ uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.int8 -m exam
   generator.gpu_memory_utilization=0.6 \
   trainer.logger="$LOGGER" \
   trainer.project_name="dapo_repro" \
-  trainer.run_name="dapo_repro_32b_int8_16n" \
-  trainer.resume_mode=null \
-  trainer.ckpt_path="/mnt/local_storage/ckpts/dapo_32b_ckpt" \
+  trainer.run_name="dapo_repro_32b_int8" \
+  trainer.ckpt_path="$CKPT_PATH" \
   generator.enforce_eager=false \
   $@

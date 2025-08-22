@@ -31,6 +31,7 @@ EVAL_TOP_P=0.7
 CLIP_RATIO_C=10.0
 MAX_RESPONSE_LENGTH=1024
 
+CKPT_PATH="$HOME/ckpts/gsm8k_0.5B_ckpt"
 
 uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.int8 -- python -m examples.flash_rl.main_dapo_flashrl \
   data.train_data="['$DATA_DIR/train.parquet']" \
@@ -86,7 +87,6 @@ uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.int8 -- pyth
   trainer.logger="$LOGGER" \
   trainer.project_name="gsm8k_flashrl" \
   trainer.run_name="gsm8k_dapo_flashrl_0.5B_int8" \
-  trainer.resume_mode=null \
-  trainer.ckpt_path="$HOME/ckpts/gsm8k_1.5B_ckpt" \
-  generator.enforce_eager=true \
+  trainer.ckpt_path="$CKPT_PATH" \
+  generator.enforce_eager=false \
   $@
