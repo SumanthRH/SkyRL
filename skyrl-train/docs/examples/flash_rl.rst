@@ -17,7 +17,7 @@ FlashRL is a novel method that provides the first RL recipe with quantized rollo
 FlashRL + SkyRL
 ---------------
 
-SkyRL now supports an initial integration with FlashRL. Currently, we support training with `online FP8 quantization <https://docs.vllm.ai/en/v0.9.2/features/quantization/fp8.html#online-dynamic-quantization>`_  as well as Int8 quantization in vLLM. 
+SkyRL now has a native integration with FlashRL. Currently, we support training with `online FP8 quantization <https://docs.vllm.ai/en/v0.9.2/features/quantization/fp8.html#online-dynamic-quantization>`_  as well as Int8 quantization in vLLM. 
 
 
 .. warning::
@@ -44,23 +44,35 @@ For Int8, we need to provide calibration data. We leverage the provided calibrat
 
 
 
-Training with Int8
-~~~~~~~~~~~~~~~~~~
+Training with Int8 on the DAPO dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+First, prepare and save the dataset in a chosen ``DATA_DIR``, run:
 
 .. code-block:: bash
-    :caption: Training configuration at ``skyrl_train/examples/flash_rl/run_dapo_gsm8k_flashrl_0.5b.sh``
+    # execute from skyrl-train directory
+
+    DATA_DIR="$HOME/data/dapo" bash examples/algorithms/dapo/prepare_dapo_data.sh
+
+We highlight some important 
+
+.. code-block:: bash
+    :caption: Training configuration at ``examples/flash_rl/run_dapo_repro_flashrl_0.5b.sh``
 
     # path for dataset (.parquet files) containing the prompts and metadata for each question
-    DATA_DIR="$HOME/data/gsm8k"
+    DATA_DIR="$HOME/data/dapo"
+    # TIS parameters
+    USE_TIS=true
+    TIS_IMP_RATIO_CAP=8.0
 
     uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.0.5b_int8 -m examples.flash_rl.main_dapo_flashrl \
         ...
-        trainer.algorithm.use_tis=true \
-        trainer.algorithm.tis_imp_ratio_cap=2.0 \
+        trainer.algorithm.use_tis=$USE_TIS \
+        trainer.algorithm.tis_imp_ratio_cap=$TIS_IMP_RATIO_CAP \
+        generator.sampling_params.logprobs=0 \
         ...
 
-Here, we've configured training to use TIS with the importance sampling ratio cap of 2.0. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` env var in ``examples/flash_rl/.env.0.5b_int8``:
+Here, we've configured training to use TIS with the importance sampling ratio cap of 8.0. ``generator.sampling_params.logprobs=0``` ensures that logprobs for the chosen tokens are returned by vLLM, which is required for TIS. Note that for making sure the FlashRL patches are applied for vLLM, we use the ``FLASHRL_CONFIG`` env var in ``examples/flash_rl/.env.0.5b_int8``: 
 
 .. code-block:: bash
     :caption: Environment variables at ``examples/flash_rl/.env.0.5b_int8``
@@ -103,4 +115,4 @@ While most parameters are self-explanatory, the ``profile`` parameter is used to
 
    FlashRL integration is experimental. While generation times can improve for large models with quantization, we've observed that the time spent in weight syncing is much higher with FlashRL for fp8. This negates some of the benefits of fp8 inference. The slowdown is primarily due to slow weight quantization in vLLM's ``process_weights_after_loading`` function and we are working on improving this.
 
-   We recomment to use int8 quantization for training if possible.
+   We recomment to use int8 quantization over fp8 if possible.

@@ -16,4 +16,4 @@ wget -O "${TEST_FILE}" "https://huggingface.co/datasets/BytedTsinghua-SIA/AIME-2
 
 # remove duplicate rows in the original dataset
 # https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/discussions/3 
-python -m examples.algorithms.dapo.prepare_dapo_data --data-dir ${DATA_DIR}
+uv run --isolated --extra vllm -m examples.algorithms.dapo.prepare_dapo_data --data-dir ${DATA_DIR}

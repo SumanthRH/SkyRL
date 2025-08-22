@@ -89,6 +89,6 @@ uv run --isolated --extra flashrl --env-file examples/flash_rl/.env.0.5b_int8 --
   trainer.project_name="dapo_flashrl" \
   trainer.run_name="dapo_flashrl_0.5B_int8" \
   trainer.resume_mode=null \
-  trainer.ckpt_path="$HOME/ckpts/dapo_0.5B_ckpt" \
+  trainer.ckpt_path="/mnt/local_storage/ckpts/dapo_0.5b_ckpt" \
   generator.enforce_eager=true \
   $@
