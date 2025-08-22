@@ -6,12 +6,12 @@ from argparse import ArgumentParser
 DEFAULT_DIR = Path.home() / "data/dapo"
 
 parser = ArgumentParser()
-parser.add_argument("--data-dir", default=DEFAULT_DIR, type=str)
+parser.add_argument("--data-dir", default=str(DEFAULT_DIR), type=str)
 
 args = parser.parse_args()
 
 # Define input and output files
-data_dir = args.data_dir
+data_dir = Path(args.data_dir)
 FILES = {
     "dapo-math-17k": "dapo-math-17k.parquet",
     "aime-2024": "aime-2024.parquet",
