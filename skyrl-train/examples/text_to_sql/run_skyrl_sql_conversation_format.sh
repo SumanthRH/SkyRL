@@ -1,6 +1,6 @@
 set -x
 
-# The exact same script as `run_search.sh` but with `use_conversation_multi_turn=true`
+# The exact same script as `run_skyrl_sql.sh` but with `use_conversation_multi_turn=true`
 # and hence `append_eos_token_after_stop_str_in_multi_turn=true`
 # See https://skyrl.readthedocs.io/en/latest/tutorials/skyrl_gym_generator.html on what behavior
 # use_conversation_multi_turn corresponds to. You might want to change the data generation prompt
