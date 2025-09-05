@@ -10,7 +10,6 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 uv run --isolated --extra vllm -m skyrl_train.infer
     --host 127.0.0.1 \
     --port 8001 \
     --seed 42 \
-    --max-model-len 4096 \
     --enable-prefix-caching \
     --enable-chunked-prefill \
     --dtype bfloat16 \
@@ -20,4 +19,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 uv run --isolated --extra vllm -m skyrl_train.infer
     --max-num-seqs 1024 \
     --trust-remote-code \
     --distributed-executor-backend mp \
-    --worker-extension-cls skyrl_train.inference_engines.vllm.vllm_engine.WorkerWrap
+    --worker-extension-cls skyrl_train.inference_engines.vllm.vllm_engine.WorkerWrap \
+    --generation-config vllm
