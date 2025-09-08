@@ -723,7 +723,7 @@ def compute_policy_loss_kl_cov(
     )
 
     # NOTE (sumanthrh): Since the pg clip ratio is not applicable for KL-COV so we just use 0.0
-    return pg_loss, torch.tensor(0.0)
+    return pg_loss, 0.0
 
 
 def reduce_loss(
