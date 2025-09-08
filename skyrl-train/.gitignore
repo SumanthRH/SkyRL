@@ -1,1 +1,2 @@
+# NOTE (sumanthrh): We add .venv/ to gitignore here so that ray doesn't export .venv folder in the working directory
 .venv/
