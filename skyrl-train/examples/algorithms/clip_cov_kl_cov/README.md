@@ -70,6 +70,5 @@ trainer:
 
 ## Reference
 
-Based on the entropy mechanism research from PRIME-RL:
 - Paper: https://arxiv.org/abs/2505.22617
 - Code: https://github.com/PRIME-RL/Entropy-Mechanism-of-RL
