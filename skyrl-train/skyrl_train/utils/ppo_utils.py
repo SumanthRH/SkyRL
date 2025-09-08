@@ -626,7 +626,7 @@ def compute_policy_loss_clip_cov(
     to provide more stable training dynamics.
     """
     # Extract config parameters with defaults
-    clip_cov_ratio = config.clip_cov.clip_cov_ratio
+    clip_cov_ratio = config.clip_cov.clip_ratio
     clip_cov_lb = config.clip_cov.clip_cov_lb
     clip_cov_ub = config.clip_cov.clip_cov_ub
 
@@ -667,7 +667,7 @@ def compute_policy_loss_clip_cov(
     # Apply correction mask to losses
     pg_losses = torch.maximum(pg_losses1, pg_losses2) * corr
     pg_loss = reduce_loss(
-        loss_mat=pg_losses, loss_mask=loss_mask, loss_reduction=config.loss_reduction, max_seq_len=config.max_seq_len
+        loss=pg_losses, loss_mask=loss_mask, loss_reduction=config.loss_reduction, max_seq_len=config.max_seq_len
     )
 
     return pg_loss, clip_frac.item()
