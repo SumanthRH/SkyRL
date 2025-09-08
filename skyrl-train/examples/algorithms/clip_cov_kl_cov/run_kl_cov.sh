@@ -16,13 +16,15 @@ LOGGER="wandb"  # change to "console" to print to stdout
 
 # Configure KL-Cov parameters
 POLICY_LOSS="kl_cov"
+KL_COV_FRAC=0.2
+PPO_KL_COEF=1.0
 
 uv run --isolated --extra vllm -m skyrl_train.entrypoints.main_base \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.policy_loss_type="$POLICY_LOSS" \
-  trainer.algorithm.kl_cov.kl_cov_frac=0.2 \
-  trainer.algorithm.kl_cov.ppo_kl_coef=1.0 \
+  trainer.algorithm.kl_cov.kl_cov_frac=$KL_COV_FRAC \
+  trainer.algorithm.kl_cov.ppo_kl_coef=$PPO_KL_COEF \
   trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
   trainer.strategy=fsdp2 \

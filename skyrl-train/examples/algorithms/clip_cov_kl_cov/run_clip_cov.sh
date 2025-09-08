@@ -15,14 +15,17 @@ LOGGER="wandb"  # change to "console" to print to stdout
 
 # Configure Clip-Cov parameters
 POLICY_LOSS="clip_cov"
+CLIP_COV_RATIO=0.0002
+CLIP_COV_LB=1.0
+CLIP_COV_UB=5.0
 
 uv run --isolated --extra vllm -m skyrl_train.entrypoints.main_base \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.policy_loss_type="$POLICY_LOSS" \
-  trainer.algorithm.clip_cov.clip_ratio=0.0002 \
-  trainer.algorithm.clip_cov.clip_cov_lb=1.0 \
-  trainer.algorithm.clip_cov.clip_cov_ub=5.0 \
+  trainer.algorithm.clip_cov.clip_ratio=$CLIP_COV_RATIO \
+  trainer.algorithm.clip_cov.clip_cov_lb=$CLIP_COV_LB \
+  trainer.algorithm.clip_cov.clip_cov_ub=$CLIP_COV_UB \
   trainer.policy.model.path="Qwen/Qwen2.5-1.5B-Instruct" \
   trainer.placement.colocate_all=true \
   trainer.strategy=fsdp2 \
