@@ -17,7 +17,7 @@ LOGGER="wandb"  # change to "console" to print to stdout
 # Configure KL-Cov parameters
 POLICY_LOSS="kl_cov"
 
-uv run --isolated --extra vllm skyrl_train.train \
+uv run --isolated --extra vllm -m skyrl_train.entrypoints.main_base \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.policy_loss_type="$POLICY_LOSS" \
