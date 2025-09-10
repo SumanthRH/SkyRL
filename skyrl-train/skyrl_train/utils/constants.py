@@ -7,7 +7,7 @@ Timeout for allocating the placement group for different actors in SkyRL
 """
 
 # For some reason the `LD_LIBRARY_PATH` is not exported to the worker with .env file.
-SKYRL_LD_LIBRARY_PATH_EXPORT = bool(os.environ.get("SKYRL_LD_LIBRARY_PATH_EXPORT", False))
+SKYRL_LD_LIBRARY_PATH_EXPORT = str(os.environ.get("SKYRL_LD_LIBRARY_PATH_EXPORT", "False")).lower() in ("true", "1", "yes")
 """
 Whether to export ``LD_LIBRARY_PATH`` environment variable from the driver to the workers with Ray's runtime env.
 
