@@ -48,6 +48,8 @@ bash examples/mini_swe_agent/run_mini_swe_8B.sh
 bash examples/mini_swe_agent/run_mini_swe_30B.sh
 ```
 
+Make sure to update the `DATA_DIR` variable in the bash script if you saved the data to a custom path.
+
 All training parameters can be modified in the run scripts, such as model choice, GRPO group size, or training batch size.
 
 ## Troubleshooting
