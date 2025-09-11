@@ -63,17 +63,17 @@ For issues with SkyRL or the Mini-SWE-Agent integration, please [open an Issue](
   - Using a stronger base model
   - Increasing `step_limit` in `swebench.yaml`
 
-- **Argument list too long**: For very large git patches exceeding ~1MB, the system hits `ARG_MAX` limits. These patches are assumed to be incorrect.
+- **Argument list too long**: For very large git patches, you might notice evaluation errors such as `Argument list too long: ‘podman’`. This is because we apply the model's git patch by passing it as a CLI argument, and for large patches, you can hit the system's `ARG_MAX` limits. On modern systems, this limit is about ~1MB. We make a simple assumption that such large patches are meant to be incorrect.
 
-- **Podman UID errors**: If running in containers with insufficient UIDs, either:
-  1. Edit `/etc/subuid` and `/etc/subgid` to use range `100000-1100000`
+- **Podman UID errors**: If running podman within a container, you might hit errors due to insufficient UIDs. To resolve this, you have two options on Linux based machines:
+  1. Edit the `/etc/subuid` and `/etc/subgid` files to use a larger range of UIDs, like `100000-1100000`
   2. Set `ignore_chown_errors=true` in Podman's containers.conf
 
 ## Configuration
 
-The main configuration file is `examples/mini_swe_agent/swebench.yaml`, which controls:
+Beyond the configuration for SkyRL in the training script, the task-specific configuration file is `examples/mini_swe_agent/swebench.yaml`, which controls:
 - Environment backend settings
 - Step limits for agent execution
 - Tool configurations for Mini-SWE-Agent
 
-See the [full documentation](../../docs/examples/mini_swe_agent.rst) for detailed implementation details.
+For more details, refer to the [documentation](https://skyrl.readthedocs.io/en/latest/examples/mini_swe_agent.html).
