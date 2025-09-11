@@ -1,6 +1,6 @@
 ## Guide: Mini-SWE-Agent + SkyRL
 
-This directory contains an integration to train a SWE-Agent on the SWE-Bench task using [Mini-SWE-Agent](https://github.com/SWE-agent/mini-swe-agent) and SkyRL.
+This directory contains an integration to train a coding agent on the SWE-Bench task using [Mini-SWE-Agent](https://github.com/SWE-agent/mini-swe-agent) and SkyRL.
 
 To start training, follow three simple steps:
 1) Prepare the SWE-Gym dataset.
