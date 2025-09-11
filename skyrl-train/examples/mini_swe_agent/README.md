@@ -65,9 +65,9 @@ For issues with SkyRL or the Mini-SWE-Agent integration, please [open an Issue](
   - Using a stronger base model
   - Increasing `step_limit` in `swebench.yaml`
 
-- **Argument list too long**: For very large git patches, you might notice evaluation errors such as `Argument list too long: ‘podman’`. This is because we apply the model's git patch by passing it as a CLI argument, and for large patches, you can hit the system's `ARG_MAX` limits. On modern systems, this limit is about ~1MB. We make a simple assumption that such large patches are meant to be incorrect.
+- **Argument list too long**: For very large git patches, you might notice evaluation errors such as `Argument list too long: 'podman'`. This is because we apply the model's git patch by passing it as a CLI argument, and for large patches, you can hit the system's `ARG_MAX` limits. On modern systems, this limit is about ~1MB. We make a simple assumption that such large patches are meant to be incorrect.
 
-- **Podman UID errors**: If running podman within a container, you might hit errors due to insufficient UIDs. To resolve this, you have two options on Linux based machines:
+- **Podman UID errors**: If running podman within a container, you might hit errors due to insufficient UIDs. To resolve this, you have two options on Linux-based machines:
   1. Edit the `/etc/subuid` and `/etc/subgid` files to use a larger range of UIDs, like `100000-1100000`
   2. Set `ignore_chown_errors=true` in Podman's containers.conf
 
