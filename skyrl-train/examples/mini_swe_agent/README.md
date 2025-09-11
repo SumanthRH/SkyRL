@@ -19,7 +19,7 @@ The Mini-SWE-Agent integration implements a custom `MiniSweAgentGenerator` that 
 1. **Generation**: Initialize a sandbox environment and generate a trajectory using Mini-SWE-Agent configured with SkyRL's HTTP endpoint, producing a git patch.
 2. **Evaluation**: Apply the generated patch to a fresh environment and run the evaluation script to determine if the instance was resolved.
 
-This process runs as Ray tasks to scale generation across cluster nodes.
+We launch a Ray task per trajectory to scale this across all nodes in the cluster.
 
 ### 1) Prepare the dataset
 
