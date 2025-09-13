@@ -228,7 +228,6 @@ class RayPPOTrainer:
         Main training loop for PPO
         """
 
-        # global_step is now managed by tracker.global_step
         self.weights_manager = InferenceWeightsManager(
             self.policy_model, self.inference_engine_client, self.cfg.trainer.placement.colocate_all
         )
@@ -275,6 +274,7 @@ class RayPPOTrainer:
         pbar = tqdm(
             total=self.total_training_steps, initial=self.tracker.global_step, desc="Training Batches Processed"
         )
+        # global_step is managed by tracker.global_step
         self.tracker.global_step += 1  # start training at global_step 1
         for epoch in range(self.cfg.trainer.epochs):
             for iter, rand_prompts in enumerate(self.train_dataloader):
@@ -1340,6 +1340,7 @@ class RayPPOTrainer:
         global_step = extract_step_from_path(Path(checkpoint_path))
         if global_step == -1:
             raise ValueError(f"Checkpoint path {checkpoint_path} is not a valid checkpoint path")
+        # global_step is managed by tracker.global_step
         self.tracker.global_step = global_step
         logger.info(f"Resuming from global_step: {global_step}")
 
