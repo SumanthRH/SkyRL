@@ -1,6 +1,13 @@
 from typing import List, Dict, Any, TypedDict, Optional, Union
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from skyrl_train.inference_engines.base import ConversationType
+
+
+@dataclass
+class TrajectoryID:
+    uid: str  # Unique identifier from dataset (instance_id, prompt_id, etc.)
+    repetition_id: int  # Which sample/repetition for this UID (0, 1, 2... for GRPO)
 
 
 class GeneratorInput(TypedDict):
@@ -8,6 +15,7 @@ class GeneratorInput(TypedDict):
     env_classes: List[str]
     env_extras: Optional[List[Dict[str, Any]]]
     sampling_params: Optional[Dict[str, Any]]
+    trajectory_ids: List[TrajectoryID]
 
 
 class GeneratorOutput(TypedDict):

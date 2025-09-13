@@ -36,6 +36,8 @@ class Tracking:
             assert backend in self.supported_backend, f"{backend} is not supported"
 
         self.logger = {}
+        self.global_step = 0
+        self.is_train = True
 
         if "wandb" in default_backend:
             import wandb
