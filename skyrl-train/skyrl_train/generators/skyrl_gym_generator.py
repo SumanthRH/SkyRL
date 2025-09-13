@@ -49,7 +49,7 @@ class SkyRLGymGenerator(GeneratorInterface):
         inference_engine_client: InferenceEngineClient,
         tokenizer,
         model_name: str,
-        tracker: Tracking,
+        tracker: Optional[Tracking] = None,
     ):
         """
         Args:

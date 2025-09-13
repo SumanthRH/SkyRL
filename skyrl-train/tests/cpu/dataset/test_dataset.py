@@ -40,7 +40,7 @@ def test_prompt_dataset_filtering(mock_load_dataset, mock_tokenizer, sample_data
 
     # Only first two prompts should remain
     assert len(dataset) == 2
-    messages, env, extra = dataset[0]
+    messages, env, extra, uid = dataset[0]
     assert env is None
     assert messages == "short prompt"
     assert extra == {"answer": "a1"}
@@ -48,10 +48,10 @@ def test_prompt_dataset_filtering(mock_load_dataset, mock_tokenizer, sample_data
 
 def test_collate_fn():
     dataset = PromptDataset.__new__(PromptDataset)  # Bypass __init__
-    sample_data = [("prompt 1", "env", {"answer": "a1"}), ("prompt 2", "env", {"answer": "a2"})]
+    sample_data = [("prompt 1", "env", {"answer": "a1"}, "1"), ("prompt 2", "env", {"answer": "a2"}, "2")]
     expected = [
-        {"prompt": "prompt 1", "env_class": "env", "env_extras": {"answer": "a1"}},
-        {"prompt": "prompt 2", "env_class": "env", "env_extras": {"answer": "a2"}},
+        {"prompt": "prompt 1", "env_class": "env", "env_extras": {"answer": "a1"}, "uid": "1"},
+        {"prompt": "prompt 2", "env_class": "env", "env_extras": {"answer": "a2"}, "uid": "2"},
     ]
 
     output = dataset.collate_fn(sample_data)
@@ -73,7 +73,7 @@ def test_prompt_dataset_hf_name_defaults_to_train(mock_load_dataset, mock_tokeni
     )
 
     assert len(dataset) == 2
-    messages, env, extra = dataset[1]
+    messages, env, extra, uid = dataset[1]
     assert messages == "a" * 120
     assert extra == {"answer": "a2"}
 
@@ -93,7 +93,7 @@ def test_prompt_dataset_hf_name_with_split(mock_load_dataset, mock_tokenizer, sa
     )
 
     assert len(dataset) == 2
-    messages, env, extra = dataset[0]
+    messages, env, extra, uid = dataset[0]
     assert messages == "short prompt"
     assert extra == {"answer": "a1"}
 

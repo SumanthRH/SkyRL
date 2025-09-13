@@ -15,7 +15,7 @@ class GeneratorInput(TypedDict):
     env_classes: List[str]
     env_extras: Optional[List[Dict[str, Any]]]
     sampling_params: Optional[Dict[str, Any]]
-    trajectory_ids: List[TrajectoryID]
+    trajectory_ids: Optional[List[TrajectoryID]]
 
 
 class GeneratorOutput(TypedDict):
