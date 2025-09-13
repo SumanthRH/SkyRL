@@ -151,7 +151,7 @@ class RayPPOTrainer:
             A dictionary of evaluation metrics.
         """
         # Update tracker state for eval mode
-        self.tracker.is_train = False
+        self.tracker.training_phase = "eval"
 
         # 0. Make a copy of self.all_metrics (will restore at the end)
         # eval() might accidentally mutate `self.all_metrics` since it is mutated in
@@ -219,6 +219,9 @@ class RayPPOTrainer:
         # 5. Restore self.all_metrics
         self.all_metrics = all_metrics_copy
 
+        # Reset tracker to train mode
+        self.tracker.training_phase = "train"
+
         return eval_metrics
 
     def train(self):
@@ -256,12 +259,8 @@ class RayPPOTrainer:
         if self.cfg.trainer.eval_interval > 0 and self.cfg.trainer.eval_before_train:
             with self.eval_weights_manager:
                 with Timer("eval", self.all_timings):
-                    # Set tracker state for initial eval
-                    self.tracker.is_train = False
                     eval_metrics = asyncio.run(self.eval())
                     self.tracker.log(eval_metrics, step=self.tracker.global_step)
-                    # Reset to train mode for training loop
-                    self.tracker.is_train = True
             # Policy model is backloaded to GPU after eval
             if self.cfg.trainer.placement.colocate_all:
                 self.policy_model.backload_to_gpu()
@@ -278,7 +277,6 @@ class RayPPOTrainer:
             total=self.total_training_steps, initial=self.tracker.global_step, desc="Training Batches Processed"
         )
         self.tracker.global_step += 1  # start training at global_step 1
-        self.tracker.is_train = True
         for epoch in range(self.cfg.trainer.epochs):
             for iter, rand_prompts in enumerate(self.train_dataloader):
                 with Timer("step", self.all_timings):
@@ -364,12 +362,8 @@ class RayPPOTrainer:
                 ):
                     with self.eval_weights_manager:
                         with Timer("eval", self.all_timings):
-                            # Set tracker to eval mode
-                            self.tracker.is_train = False
                             eval_metrics = asyncio.run(self.eval())
                             self.all_metrics.update(eval_metrics)
-                            # Set tracker back to train mode
-                            self.tracker.is_train = True
                     # Policy model is backloaded to GPU after eval
                     if self.cfg.trainer.placement.colocate_all:
                         self.policy_model.backload_to_gpu()
@@ -455,12 +449,12 @@ class RayPPOTrainer:
         uids = []
         for prompt_idx, prompt in enumerate(rand_prompts):
             # Generate one UID per row in the dataset
-            base_uid = str(uuid.uuid4())
+            uid = str(uuid.uuid4())
 
             # Create TrajectoryID for each repetition
             for repetition_id in range(n_samples_per_prompt):
-                trajectory_ids.append(TrajectoryID(uid=base_uid, repetition_id=repetition_id))
-                uids.append(f"{base_uid}_{repetition_id}")
+                trajectory_ids.append(TrajectoryID(row_id=uid, repetition_id=repetition_id))
+                uids.append(uid)
 
         generator_input: GeneratorInput = {
             "prompts": all_prompts,

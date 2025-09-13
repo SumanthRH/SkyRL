@@ -13,12 +13,14 @@ from minisweagent.config import get_config_path
 from .mini_swe_utils import evaluate_trajectory, get_sb_environment
 
 from skyrl_train.generators.skyrl_gym_generator import SkyRLGymGenerator, GeneratorOutput, GeneratorInput
+from skyrl_train.generators.base import TrajectoryID
 from skyrl_train.inference_engines.base import ConversationType
 from skyrl_train.inference_engines.inference_engine_client import InferenceEngineClient
 from skyrl_train.inference_engines.utils import get_sampling_params_for_backend
 from skyrl_train.generators.utils import (
     get_rollout_metrics,
 )
+from skyrl_train.utils.tracking import Tracking, TrainingPhase
 
 
 class DefaultAgentWithReminder(DefaultAgent):
@@ -39,15 +41,15 @@ class DefaultAgentWithReminder(DefaultAgent):
 
 @ray.remote(num_cpus=0.01)
 def init_and_run(
-    instance,
-    litellm_model_name,
-    sweagent_config,
-    generator_cfg,
-    data_source,
-    sampling_params,
-    trajectory_id,
-    global_step,
-    is_train,
+    instance: dict,
+    litellm_model_name: str,
+    sweagent_config: dict,
+    generator_cfg: DictConfig,
+    data_source: str,
+    sampling_params: dict,
+    trajectory_id: TrajectoryID,
+    global_step: int,
+    training_phase: TrainingPhase,
 ):
     from loguru import logger
 
@@ -73,9 +75,8 @@ def init_and_run(
         error = str(e)
         extra_info = {"traceback": traceback.format_exc()}
     finally:
-        # Create trajectory directory with proper structure: step_{global_step}_{train/eval}
-        mode = "train" if is_train else "eval"
-        path = Path(generator_cfg.miniswe_traj_dir) / f"step_{global_step}_{mode}"
+        # Create trajectory directory with proper structure: step_{global_step}/{train/eval}
+        path = Path(generator_cfg.miniswe_traj_dir) / f"step_{global_step}" / training_phase
         path.mkdir(parents=True, exist_ok=True)
         # Use instance_id and repetition_id for meaningful filename: {instance_id}_{repetition_id}.json
         instance_id = instance["instance_id"]
@@ -109,7 +110,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         inference_engine_client: InferenceEngineClient,
         tokenizer,
         model_name: str,
-        tracker,
+        tracker: Tracking,
     ):
 
         # Call parent constructor first
@@ -150,7 +151,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
             sampling_params,
             trajectory_id,
             self.tracker.global_step,
-            self.tracker.is_train,
+            self.tracker.training_phase,
         )
         if not len(messages):
             return None, None, None, None, None, None
