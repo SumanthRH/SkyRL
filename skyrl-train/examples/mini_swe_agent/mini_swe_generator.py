@@ -38,7 +38,17 @@ class DefaultAgentWithReminder(DefaultAgent):
 
 
 @ray.remote(num_cpus=0.01)
-def init_and_run(instance, litellm_model_name, sweagent_config, generator_cfg, data_source, sampling_params):
+def init_and_run(
+    instance,
+    litellm_model_name,
+    sweagent_config,
+    generator_cfg,
+    data_source,
+    sampling_params,
+    trajectory_id,
+    global_step,
+    is_train,
+):
     from loguru import logger
 
     model_config = sweagent_config.get("model", {})
@@ -63,9 +73,14 @@ def init_and_run(instance, litellm_model_name, sweagent_config, generator_cfg, d
         error = str(e)
         extra_info = {"traceback": traceback.format_exc()}
     finally:
-        path = Path(generator_cfg.miniswe_traj_dir)
+        # Create trajectory directory with proper structure: step_{global_step}_{train/eval}
+        mode = "train" if is_train else "eval"
+        path = Path(generator_cfg.miniswe_traj_dir) / f"step_{global_step}_{mode}"
         path.mkdir(parents=True, exist_ok=True)
-        path = path / f"{instance['instance_id']}.json"
+        # Use instance_id and repetition_id for meaningful filename: {instance_id}_{repetition_id}.json
+        instance_id = instance["instance_id"]
+        filename = f"{instance_id}_{trajectory_id.repetition_id}.json"
+        path = path / filename
         if agent is not None:
             eval_error = None
             try:
@@ -94,10 +109,11 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         inference_engine_client: InferenceEngineClient,
         tokenizer,
         model_name: str,
+        tracker,
     ):
 
         # Call parent constructor first
-        super().__init__(generator_cfg, skyrl_gym_cfg, inference_engine_client, tokenizer, model_name)
+        super().__init__(generator_cfg, skyrl_gym_cfg, inference_engine_client, tokenizer, model_name, tracker)
 
         self.http_server_inference_engine_client_host = generator_cfg.get(
             "http_server_inference_engine_client_host", "127.0.0.1"
@@ -120,6 +136,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         max_tokens: int,
         max_input_length: int,
         sampling_params: Dict[str, Any],
+        trajectory_id,
     ) -> Tuple[List[int], float, str, List[int], List[int], Optional[List[int]]]:
 
         sweagent_config = yaml.safe_load(get_config_path(self.generator_cfg.miniswe_config_path).read_text())
@@ -131,6 +148,9 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
             self.generator_cfg,
             env_extras["data_source"],
             sampling_params,
+            trajectory_id,
+            self.tracker.global_step,
+            self.tracker.is_train,
         )
         if not len(messages):
             return None, None, None, None, None, None
@@ -201,6 +221,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         """
         prompts = input_batch["prompts"]
         env_extras = input_batch["env_extras"]
+        trajectory_ids = input_batch["trajectory_ids"]
         max_tokens = self.generator_cfg.sampling_params.max_generate_length
         max_input_length = self.generator_cfg.max_input_length
         sampling_params = get_sampling_params_for_backend(
@@ -217,6 +238,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
                     max_tokens=max_tokens,
                     max_input_length=max_input_length,
                     sampling_params=sampling_params,
+                    trajectory_id=trajectory_ids[i],
                 )
             )
 

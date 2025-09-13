@@ -37,7 +37,7 @@ class EvalOnlyEntrypoint(BasePPOExp):
 
         inference_engine_client = InferenceEngineClient(inference_engines)
         await inference_engine_client.wake_up()
-        generator = self.get_generator(self.cfg, tokenizer, inference_engine_client)
+        generator = self.get_generator(self.cfg, tokenizer, inference_engine_client, self.get_tracker())
 
         trainer = RayPPOTrainer(
             cfg=self.cfg,

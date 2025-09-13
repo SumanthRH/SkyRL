@@ -8,13 +8,14 @@ from .mini_swe_generator import MiniSweAgentGenerator
 
 
 class MiniSWEPPOExp(BasePPOExp):
-    def get_generator(self, cfg, tokenizer, inference_engine_client):
+    def get_generator(self, cfg, tokenizer, inference_engine_client, tracker):
         generator = MiniSweAgentGenerator(
             generator_cfg=cfg.generator,
             skyrl_gym_cfg=OmegaConf.create({"max_env_workers": 0}),
             inference_engine_client=inference_engine_client,
             tokenizer=tokenizer,
             model_name=self.cfg.trainer.policy.model.path,
+            tracker=tracker,
         )
         return generator
 
