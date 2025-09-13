@@ -6,7 +6,6 @@ from typing import Any, List, Optional, Dict, Tuple, Union
 from jaxtyping import Float
 from pathlib import Path
 import ray
-import uuid
 import torch
 from loguru import logger
 from omegaconf import DictConfig
@@ -448,8 +447,7 @@ class RayPPOTrainer:
         trajectory_ids = []
         uids = []
         for prompt_idx, prompt in enumerate(rand_prompts):
-            # Generate one UID per row in the dataset
-            uid = str(uuid.uuid4())
+            uid: str = prompt["uid"]
 
             # Create TrajectoryID for each repetition
             for repetition_id in range(n_samples_per_prompt):
