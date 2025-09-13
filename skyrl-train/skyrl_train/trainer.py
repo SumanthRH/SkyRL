@@ -450,18 +450,12 @@ class RayPPOTrainer:
         )
         request_sampling_params = get_sampling_params_for_backend(self.cfg.generator.backend, sampling_params)
 
-        # Create TrajectoryID objects - use env_extras to get unique ID if available, fallback to UUID
+        # Create TrajectoryID objects - one UID per row, repetition_id for multiple samples
         trajectory_ids = []
         uids = []
         for prompt_idx, prompt in enumerate(rand_prompts):
-            # Try to get a unique identifier from env_extras, fallback to UUID
-            env_extra = prompt.get("env_extras", {})
-            if isinstance(env_extra, dict) and "instance_id" in env_extra:
-                base_uid = str(env_extra["instance_id"])
-            elif isinstance(env_extra, dict) and "id" in env_extra:
-                base_uid = str(env_extra["id"])
-            else:
-                base_uid = str(uuid.uuid4())
+            # Generate one UID per row in the dataset
+            base_uid = str(uuid.uuid4())
 
             # Create TrajectoryID for each repetition
             for repetition_id in range(n_samples_per_prompt):
