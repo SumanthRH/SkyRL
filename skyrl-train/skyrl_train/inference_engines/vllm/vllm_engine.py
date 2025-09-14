@@ -104,7 +104,16 @@ class WorkerWrap:
         weight_list = []
         for name, dtype, shape in zip(names, dtypes, shapes):
             dtype = str_to_torch_dtype(dtype)
-            assert dtype == self.model_config.dtype, f"mismatch dtype: src {dtype}, dst {self.model_config.dtype}"
+            
+            # For GPT-OSS models, allow BF16 weights from FSDP training to be loaded into MXFP4 vLLM model
+            # vLLM's load_weights should handle the conversion internally
+            model_path = getattr(self.model_config, 'model', '') or getattr(self.model_config, 'model_name_or_path', '')
+            is_gpt_oss = "gpt-oss" in model_path.lower() if model_path else False
+            
+            if not (dtype == self.model_config.dtype or (is_gpt_oss and dtype == torch.bfloat16)):
+                raise ValueError(f"dtype mismatch: src {dtype}, dst {self.model_config.dtype}. "
+                               f"For GPT-OSS models, BF16 from training is expected to be converted to MXFP4 by vLLM.")
+                               
             weight = torch.empty(shape, dtype=dtype, device="cuda")
             torch.distributed.broadcast(weight, 0, group=self._model_update_group)
             weight_list.append((name, weight))
@@ -125,7 +134,14 @@ class WorkerWrap:
             props = torch.cuda.get_device_properties(device)
             physical_gpu_id = str(props.uuid)
 
-            assert dtype == self.model_config.dtype, f"mismatch dtype: src {dtype}, dst {self.model_config.dtype}"
+            # For GPT-OSS models, allow BF16 weights from FSDP training to be loaded into MXFP4 vLLM model
+            # vLLM's load_weights should handle the conversion internally
+            model_path = getattr(self.model_config, 'model', '') or getattr(self.model_config, 'model_name_or_path', '')
+            is_gpt_oss = "gpt-oss" in model_path.lower() if model_path else False
+            
+            if not (dtype == self.model_config.dtype or (is_gpt_oss and dtype == torch.bfloat16)):
+                raise ValueError(f"dtype mismatch: src {dtype}, dst {self.model_config.dtype}. "
+                               f"For GPT-OSS models, BF16 from training is expected to be converted to MXFP4 by vLLM.")
 
             handle = ipc_handle[physical_gpu_id]
 

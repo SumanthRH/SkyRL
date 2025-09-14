@@ -84,9 +84,15 @@ def test_policy_local_engines_e2e(colocate_all, weight_sync_backend, strategy, b
         cfg.generator.backend = backend
         cfg.generator.inference_engine_tensor_parallel_size = tp_size
 
+        # Use GPT-OSS for FSDP + vLLM combinations to test MXFP4 support
+        test_model = MODEL
+        if strategy in ("fsdp", "fsdp2") and backend == "vllm":
+            test_model = "openai/gpt-oss-20b"
+            cfg.trainer.policy.model.path = test_model
+
         # If colocate is True, this will load the engine, sleep, and wake up the engine
         client, pg = init_inference_engines(
-            model=MODEL,
+            model=test_model,
             cfg=cfg,
             use_local=True,
             async_engine=cfg.generator.async_engine,
@@ -106,7 +112,7 @@ def test_policy_local_engines_e2e(colocate_all, weight_sync_backend, strategy, b
         asyncio.run(client.reset_prefix_cache())
         ray.get(policy.async_run_ray_method("pass_through", "broadcast_to_inference_engines", client))
         sampling_params = get_sampling_params_for_backend(cfg.generator.backend, cfg.generator.sampling_params)
-        outputs = asyncio.run(run_inference(client, get_test_prompts(MODEL), sampling_params))
+        outputs = asyncio.run(run_inference(client, get_test_prompts(test_model), sampling_params))
 
         print(f"Example output: {outputs['responses'][0]}, {outputs['stop_reasons'][0]}")
     finally:
