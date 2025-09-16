@@ -767,6 +767,7 @@ class RayPPOTrainer:
             be awake (i.e. on GPU).
         - after calling this method, the same model placement still holds.
         """
+        # NOTE: we assume that .generate returns samples in the same order as passed in
         generator_output: GeneratorOutput = await self.generator.generate(input_batch)
 
         # add rollout metrics to self.all_metrics
