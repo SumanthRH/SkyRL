@@ -106,6 +106,16 @@ class RayPPOTrainer:
         self.reward_kl_controller: Optional[Union[FixedKLController, AdaptiveKLController]] = None
         configure_ray_worker_logging()
 
+    @property
+    def global_step(self) -> int:
+        return self.global_step
+
+    @global_step.setter
+    def global_step(self, value):
+        if not isinstance(value, int) and value >= 0:
+            raise ValueError(f"Expected global step to be an non-negative integer, got: {value}")
+        self.global_step = value
+
     def build_dataloader(self, dataset: PromptDataset, is_train=True):
         """
         Build the dataloader for the training or evaluation dataset
@@ -140,7 +150,7 @@ class RayPPOTrainer:
         """
         Run generation and scoring on the evaluation dataset.
 
-        The eval metrics are recorded after having finished training `self.tracker.global_step` steps.
+        The eval metrics are recorded after having finished training `self.global_step` steps.
         Metrics recorded in global_step 0 corresponds to evaluations before training.
 
         Args:
@@ -202,7 +212,7 @@ class RayPPOTrainer:
                 data_save_dir = (
                     Path(self.cfg.trainer.export_path)
                     / "dumped_evals"
-                    / ("eval_only" if eval_only else f"global_step_{self.tracker.global_step}_evals")
+                    / ("eval_only" if eval_only else f"global_step_{self.global_step}_evals")
                 )
                 data_save_dir.mkdir(parents=True, exist_ok=True)
                 dump_per_dataset_eval_results(
@@ -245,7 +255,7 @@ class RayPPOTrainer:
         if self.resume_mode != ResumeMode.NONE:
             with Timer("load_checkpoints"):
                 self.load_checkpoints()
-                logger.info(f"Resumed training from global_step {self.tracker.global_step}")
+                logger.info(f"Resumed training from global_step {self.global_step}")
 
         # create rank0 policy model and inference_engines groups, then broadcast weights to inference_engines
         with Timer("setup_policy_and_generator"):
@@ -271,11 +281,9 @@ class RayPPOTrainer:
             self.reward_kl_controller = get_kl_controller(self.cfg.trainer.algorithm)
 
         # main training loop
-        pbar = tqdm(
-            total=self.total_training_steps, initial=self.tracker.global_step, desc="Training Batches Processed"
-        )
+        pbar = tqdm(total=self.total_training_steps, initial=self.global_step, desc="Training Batches Processed")
         # global_step is managed by tracker.global_step
-        self.tracker.global_step += 1  # start training at global_step 1
+        self.global_step += 1  # start training at global_step 1
         for epoch in range(self.cfg.trainer.epochs):
             for iter, rand_prompts in enumerate(self.train_dataloader):
                 with Timer("step", self.all_timings):
@@ -342,9 +350,7 @@ class RayPPOTrainer:
                     if self.cfg.trainer.dump_data_batch:
                         # dump data to file
                         with Timer("dump_data_batch"):
-                            self.dump_data(
-                                training_input, file_name=f"global_step_{self.tracker.global_step}_training_input"
-                            )
+                            self.dump_data(training_input, file_name=f"global_step_{self.global_step}_training_input")
 
                     # 4. train policy/critic model
                     # Policy model is backloaded to GPU during training
@@ -354,10 +360,10 @@ class RayPPOTrainer:
                 # 5. set logs
                 logger.info(status)
                 # log epoch info
-                self.all_metrics.update({"trainer/epoch": epoch, "trainer/global_step": self.tracker.global_step})
+                self.all_metrics.update({"trainer/epoch": epoch, "trainer/global_step": self.global_step})
                 if self.cfg.trainer.eval_interval > 0 and (
-                    self.tracker.global_step % self.cfg.trainer.eval_interval == 0
-                    or self.tracker.global_step == self.total_training_steps
+                    self.global_step % self.cfg.trainer.eval_interval == 0
+                    or self.global_step == self.total_training_steps
                 ):
                     with self.eval_weights_manager:
                         with Timer("eval", self.all_timings):
@@ -370,10 +376,7 @@ class RayPPOTrainer:
                 if self.cfg.trainer.ckpt_interval > 0 and self.global_step % self.cfg.trainer.ckpt_interval == 0:
                     with Timer("save_checkpoints", self.all_timings):
                         self.save_checkpoints()
-                if (
-                    self.cfg.trainer.hf_save_interval > 0
-                    and self.tracker.global_step % self.cfg.trainer.hf_save_interval == 0
-                ):
+                if self.cfg.trainer.hf_save_interval > 0 and self.global_step % self.cfg.trainer.hf_save_interval == 0:
                     with Timer("save_hf_model", self.all_timings):
                         self.save_models()
 
@@ -388,7 +391,7 @@ class RayPPOTrainer:
                 # update progress bar after logging
                 pbar.update(1)
 
-                self.tracker.global_step += 1
+                self.global_step += 1
 
                 del training_input, generator_output
 
@@ -1096,7 +1099,7 @@ class RayPPOTrainer:
         """
         Run the training step for the policy and critic models (this is overlapped if colocate_all is False).
         """
-        data.metadata["global_step"] = self.tracker.global_step
+        data.metadata["global_step"] = self.global_step
         if self.cfg.trainer.placement.colocate_all:
             if self.critic_model is not None:
                 with Timer("critic_train", self.all_timings):
@@ -1210,7 +1213,7 @@ class RayPPOTrainer:
         Save the model, optimizer, and training states to disk.
         """
         # Create global step folder structure
-        global_step_folder = os.path.join(self.cfg.trainer.ckpt_path, f"global_step_{self.tracker.global_step}")
+        global_step_folder = os.path.join(self.cfg.trainer.ckpt_path, f"global_step_{self.global_step}")
         policy_save_dir = os.path.join(global_step_folder, "policy")
         critic_save_dir = os.path.join(global_step_folder, "critic")
         # TODO(tgriggs): Add reward model checkpointing.
@@ -1222,7 +1225,7 @@ class RayPPOTrainer:
             self.policy_model.async_run_ray_method(
                 "pass_through",
                 "save_ckpt",
-                global_step=self.tracker.global_step,
+                global_step=self.global_step,
                 ckpt_dir=policy_save_dir,
                 tokenizer=self.tokenizer,
             )
@@ -1238,7 +1241,7 @@ class RayPPOTrainer:
                 self.critic_model.async_run_ray_method(
                     "pass_through",
                     "save_ckpt",
-                    global_step=self.tracker.global_step,
+                    global_step=self.global_step,
                     ckpt_dir=critic_save_dir,
                     tokenizer=self.tokenizer,
                 )
@@ -1260,7 +1263,7 @@ class RayPPOTrainer:
 
         # Save additional trainer state
         trainer_state = {
-            "global_step": self.tracker.global_step,
+            "global_step": self.global_step,
             "config": self.cfg,
         }
         trainer_state_path = os.path.join(global_step_folder, "trainer_state.pt")
@@ -1271,11 +1274,9 @@ class RayPPOTrainer:
         # Atomic tracking - write this last after all saves succeed
         latest_checkpoint_file = os.path.join(self.cfg.trainer.ckpt_path, "latest_ckpt_global_step.txt")
         with io.open_file(latest_checkpoint_file, "w") as f:
-            f.write(str(self.tracker.global_step))
+            f.write(str(self.global_step))
 
-        logger.info(
-            f"Successfully saved checkpoint for global_step_{self.tracker.global_step} to: {global_step_folder}"
-        )
+        logger.info(f"Successfully saved checkpoint for global_step_{self.global_step} to: {global_step_folder}")
 
         # Clean up old checkpoints after successful save
         with Timer("cleanup_old_checkpoints", self.all_timings):
@@ -1344,7 +1345,7 @@ class RayPPOTrainer:
         if global_step == -1:
             raise ValueError(f"Checkpoint path {checkpoint_path} is not a valid checkpoint path")
         # global_step is managed by tracker.global_step
-        self.tracker.global_step = global_step
+        self.global_step = global_step
         logger.info(f"Resuming from global_step: {global_step}")
 
         # Define paths for different checkpoint components
@@ -1413,16 +1414,12 @@ class RayPPOTrainer:
         """
         Save the model parameters in HF format at `cfg.trainer.export_path`.
         """
-        policy_export_dir = os.path.join(
-            self.cfg.trainer.export_path, f"global_step_{self.tracker.global_step}", "policy"
-        )
+        policy_export_dir = os.path.join(self.cfg.trainer.export_path, f"global_step_{self.global_step}", "policy")
         ray.get(
             self.policy_model.async_run_ray_method("pass_through", "save_hf_model", policy_export_dir, self.tokenizer)
         )
         if self.critic_model is not None:
-            critic_export_dir = os.path.join(
-                self.cfg.trainer.export_path, f"global_step_{self.tracker.global_step}", "critic"
-            )
+            critic_export_dir = os.path.join(self.cfg.trainer.export_path, f"global_step_{self.global_step}", "critic")
             ray.get(
                 self.critic_model.async_run_ray_method(
                     "pass_through", "save_hf_model", critic_export_dir, self.tokenizer
@@ -1439,9 +1436,7 @@ class RayPPOTrainer:
         - after calling this method, the same model placement still holds.
         """
         # TODO(tgriggs): Make policy-to-ref sync faster.
-        policy_export_dir = os.path.join(
-            self.cfg.trainer.export_path, f"global_step_{self.tracker.global_step}", "policy"
-        )
+        policy_export_dir = os.path.join(self.cfg.trainer.export_path, f"global_step_{self.global_step}", "policy")
         ray.get(
             self.policy_model.async_run_ray_method("pass_through", "save_hf_model", policy_export_dir, self.tokenizer)
         )
