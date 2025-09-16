@@ -6,7 +6,7 @@ from skyrl_train.inference_engines.base import ConversationType
 
 @dataclass
 class TrajectoryID:
-    row_id: str  # Unique identifier from dataset (instance_id, prompt_id, etc.)
+    instance_id: str  # Unique identifier for the instance in the dataset
     repetition_id: int  # Which sample/repetition for this UID (0, 1, 2... for GRPO)
 
 

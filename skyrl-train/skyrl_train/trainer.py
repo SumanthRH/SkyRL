@@ -450,7 +450,7 @@ class RayPPOTrainer:
 
             # Create TrajectoryID for each repetition
             for repetition_id in range(n_samples_per_prompt):
-                trajectory_ids.append(TrajectoryID(row_id=uid, repetition_id=repetition_id))
+                trajectory_ids.append(TrajectoryID(instance_id=uid, repetition_id=repetition_id))
                 uids.append(uid)
 
         generator_input: GeneratorInput = {
