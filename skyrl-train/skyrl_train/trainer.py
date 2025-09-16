@@ -113,7 +113,7 @@ class RayPPOTrainer:
 
     @global_step.setter
     def global_step(self, value):
-        if not isinstance(value, int) and value >= 0:
+        if not (isinstance(value, int) and value >= 0):
             raise ValueError(f"Expected global step to be an non-negative integer, got: {value}")
         self.tracker.global_step = value
 
