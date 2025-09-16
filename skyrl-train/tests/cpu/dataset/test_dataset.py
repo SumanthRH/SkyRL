@@ -154,6 +154,9 @@ def test_prompt_dataset_uids(mock_load_dataset, sample_dataset, mock_tokenizer):
     )
     rows = [ds[i] for i in range(len(ds))]
     uids = [row[3] for row in rows]
+
+    # UID is simply the row index
+    assert uids[0] == "0"
     # UIDs must be unique
     assert len(set(uids)) == len(uids)
 
