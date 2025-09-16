@@ -108,6 +108,7 @@ class RayPPOTrainer:
 
     @property
     def global_step(self) -> int:
+        # NOTE: `tracker` object is the source of truth for global step
         return self.tracker.global_step
 
     @global_step.setter
