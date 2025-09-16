@@ -154,10 +154,10 @@ def test_prompt_dataset_uids(mock_load_dataset, sample_dataset, mock_tokenizer):
     )
     rows = [ds[i] for i in range(len(ds))]
     uids = [row[3] for row in rows]
-    # uids must be unique
+    # UIDs must be unique
     assert len(set(uids)) == len(uids)
 
     rows_again = [ds[i] for i in range(len(ds))]
     uids_again = [row[3] for row in rows_again]
-    # when sampled the second time, uids should not change
+    # When sampled the second time, UIDs should not change
     assert uids_again == uids
