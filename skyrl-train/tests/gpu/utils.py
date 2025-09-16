@@ -396,7 +396,7 @@ def init_inference_engines(
     )
     client = InferenceEngineClient(eps, tokenizer, cfg)
     if sleep:
-        asyncio.run(client.wake_up())
+        asyncio.run(client.wake_up(tags=["weights"]))
     return client, pg
 
 
