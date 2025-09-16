@@ -137,3 +137,27 @@ def test_prompt_dataset_hf_real_dataset(mock_tokenizer):
         env_class_key="env_class",
     )
     assert len(ds) > 0
+
+
+@patch("datasets.load_dataset")
+def test_prompt_dataset_uids(mock_load_dataset, sample_dataset, mock_tokenizer):
+    # When only a dataset name is provided, we default to the 'train' split
+    mock_load_dataset.return_value = {"train": sample_dataset}
+
+    ds = PromptDataset(
+        datasets=["my_hf_dataset"],
+        tokenizer=mock_tokenizer,
+        max_prompt_length=1024,
+        num_workers=1,
+        prompt_key="prompt",
+        env_class_key="env_class",
+    )
+    rows = [ds[i] for i in range(len(ds))]
+    uids = [row[3] for row in rows]
+    # uids must be unique
+    assert len(set(uids)) == len(uids)
+
+    rows_again = [ds[i] for i in range(len(ds))]
+    uids_again = [row[3] for row in rows_again]
+    # when sampled the second time, uids should not change
+    assert uids_again == uids
