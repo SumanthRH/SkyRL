@@ -161,7 +161,7 @@ class BasePPOExp:
         else:
             return None
 
-    def get_generator(self, cfg, tokenizer, inference_engine_client, tracker):
+    def get_generator(self, cfg, tokenizer, inference_engine_client):
         """Initializes the generator.
 
         Returns:
@@ -175,7 +175,6 @@ class BasePPOExp:
             inference_engine_client=inference_engine_client,
             tokenizer=tokenizer,
             model_name=cfg.trainer.policy.model.path,
-            tracker=tracker,
         )
 
     def get_trainer(
@@ -256,7 +255,7 @@ class BasePPOExp:
 
         inference_engine_client = InferenceEngineClient(inference_engines, tokenizer, self.cfg)
 
-        generator: GeneratorInterface = self.get_generator(self.cfg, tokenizer, inference_engine_client, tracker)
+        generator: GeneratorInterface = self.get_generator(self.cfg, tokenizer, inference_engine_client)
 
         trainer = self.get_trainer(
             cfg=self.cfg,

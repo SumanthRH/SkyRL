@@ -13,14 +13,13 @@ from minisweagent.config import get_config_path
 from .mini_swe_utils import evaluate_trajectory, get_sb_environment
 
 from skyrl_train.generators.skyrl_gym_generator import SkyRLGymGenerator, GeneratorOutput, GeneratorInput
-from skyrl_train.generators.base import TrajectoryID, TrainingPhase
+from skyrl_train.generators.base import TrajectoryID, TrainingPhase, BatchMetadata
 from skyrl_train.inference_engines.base import ConversationType
 from skyrl_train.inference_engines.inference_engine_client import InferenceEngineClient
 from skyrl_train.inference_engines.utils import get_sampling_params_for_backend
 from skyrl_train.generators.utils import (
     get_rollout_metrics,
 )
-from skyrl_train.utils.tracking import Tracking
 
 
 class DefaultAgentWithReminder(DefaultAgent):
@@ -110,11 +109,10 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         inference_engine_client: InferenceEngineClient,
         tokenizer,
         model_name: str,
-        tracker: Tracking,
     ):
 
         # Call parent constructor first
-        super().__init__(generator_cfg, skyrl_gym_cfg, inference_engine_client, tokenizer, model_name, tracker)
+        super().__init__(generator_cfg, skyrl_gym_cfg, inference_engine_client, tokenizer, model_name)
 
         self.http_server_inference_engine_client_host = generator_cfg.get(
             "http_server_inference_engine_client_host", "127.0.0.1"
@@ -137,7 +135,8 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         max_tokens: int,
         max_input_length: int,
         sampling_params: Dict[str, Any],
-        trajectory_id,
+        trajectory_id: TrajectoryID,
+        batch_metadata: BatchMetadata,
     ) -> Tuple[List[int], float, str, List[int], List[int], Optional[List[int]]]:
 
         sweagent_config = yaml.safe_load(get_config_path(self.generator_cfg.miniswe_config_path).read_text())
@@ -150,8 +149,8 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
             env_extras["data_source"],
             sampling_params,
             trajectory_id,
-            self.tracker.global_step,
-            self.tracker.training_phase,
+            batch_metadata.global_step,
+            batch_metadata.training_phase,
         )
         if not len(messages):
             return None, None, None, None, None, None
@@ -223,6 +222,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
         prompts = input_batch["prompts"]
         env_extras = input_batch["env_extras"]
         trajectory_ids = input_batch["trajectory_ids"]
+        batch_metadata = input_batch["batch_metadata"]
         max_tokens = self.generator_cfg.sampling_params.max_generate_length
         max_input_length = self.generator_cfg.max_input_length
         sampling_params = get_sampling_params_for_backend(
@@ -240,6 +240,7 @@ class MiniSweAgentGenerator(SkyRLGymGenerator):
                     max_input_length=max_input_length,
                     sampling_params=sampling_params,
                     trajectory_id=trajectory_ids[i],
+                    batch_metadata=batch_metadata,
                 )
             )
 
