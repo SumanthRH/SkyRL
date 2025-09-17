@@ -96,7 +96,6 @@ async def test_skyrl_gym_generator_chat_templating_exact(model_name):
         inference_engine_client=mock_llm,
         tokenizer=tokenizer,
         model_name=model_name,
-        tracker=None,
     )
 
     prompt = [[{"role": "user", "content": "a"}]]
