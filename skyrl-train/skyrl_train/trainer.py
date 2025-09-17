@@ -23,6 +23,7 @@ from skyrl_train.generators.base import (
     GeneratorInterface,
     TrajectoryID,
     BatchMetadata,
+    TrainingPhase,
 )
 from skyrl_train.generators.utils import concatenate_generator_outputs, get_metrics_from_generator_output
 from skyrl_train.dataset.preprocess import (
@@ -415,7 +416,7 @@ class RayPPOTrainer:
         n_samples_per_prompt: int,
         rand_prompts: List[Any],
         sampling_params: Dict[str, Any],
-        training_phase: str = "train",
+        training_phase: TrainingPhase,
     ) -> Tuple[GeneratorInput, List[str]]:
         """
         Replicate prompts if needed and generate uids.
