@@ -19,12 +19,10 @@ import dataclasses
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Union, Literal
+from typing import Any, Dict, List, Union
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 import pprint
-
-TrainingPhase = Literal["train", "eval"]
 
 
 # TODO(tgriggs): Test all backends.
@@ -38,8 +36,6 @@ class Tracking:
             assert backend in self.supported_backends, f"{backend} is not supported"
 
         self.logger = {}
-        self.global_step = 0
-        self.training_phase: TrainingPhase = "train"
 
         if "wandb" in backends:
             import wandb
