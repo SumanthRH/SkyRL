@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from skyrl_train.inference_engines.base import ConversationType
 
+TrainingPhase = Literal["train", "eval"]
+
 
 @dataclass
 class TrajectoryID:
@@ -13,7 +15,7 @@ class TrajectoryID:
 @dataclass
 class BatchMetadata:
     global_step: int
-    training_phase: Literal["train", "eval"]
+    training_phase: TrainingPhase
 
 
 class GeneratorInput(TypedDict):

@@ -13,14 +13,14 @@ from minisweagent.config import get_config_path
 from .mini_swe_utils import evaluate_trajectory, get_sb_environment
 
 from skyrl_train.generators.skyrl_gym_generator import SkyRLGymGenerator, GeneratorOutput, GeneratorInput
-from skyrl_train.generators.base import TrajectoryID
+from skyrl_train.generators.base import TrajectoryID, TrainingPhase
 from skyrl_train.inference_engines.base import ConversationType
 from skyrl_train.inference_engines.inference_engine_client import InferenceEngineClient
 from skyrl_train.inference_engines.utils import get_sampling_params_for_backend
 from skyrl_train.generators.utils import (
     get_rollout_metrics,
 )
-from skyrl_train.utils.tracking import Tracking, TrainingPhase
+from skyrl_train.utils.tracking import Tracking
 
 
 class DefaultAgentWithReminder(DefaultAgent):
