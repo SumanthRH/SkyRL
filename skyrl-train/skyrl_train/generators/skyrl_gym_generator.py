@@ -154,7 +154,7 @@ class SkyRLGymGenerator(GeneratorInterface):
         env = skyrl_gym.make(env_class, env_config=env_config, extras=env_extras)
 
         session_id = (
-            trajectory_id.instance_id + str(trajectory_id.repetition_id) if trajectory_id is not None else uuid4().hex
+            f"{trajectory_id.instance_id}_{trajectory_id.repetition_id}" if trajectory_id is not None else uuid4().hex
         )
         done = False
 

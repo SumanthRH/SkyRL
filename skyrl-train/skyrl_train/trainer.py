@@ -108,6 +108,17 @@ class RayPPOTrainer:
         self.reward_kl_controller: Optional[Union[FixedKLController, AdaptiveKLController]] = None
         configure_ray_worker_logging()
 
+    @property
+    def global_step(self) -> int:
+        # NOTE: `tracker` object is the source of truth for global step
+        return self.tracker.global_step
+
+    @global_step.setter
+    def global_step(self, value):
+        if not (isinstance(value, int) and value >= 0):
+            raise ValueError(f"Expected global step to be an non-negative integer, got: {value}")
+        self.tracker.global_step = value
+
     def build_dataloader(self, dataset: PromptDataset, is_train=True):
         """
         Build the dataloader for the training or evaluation dataset
@@ -761,6 +772,7 @@ class RayPPOTrainer:
             be awake (i.e. on GPU).
         - after calling this method, the same model placement still holds.
         """
+        # NOTE: we assume that .generate returns samples in the same order as passed in
         generator_output: GeneratorOutput = await self.generator.generate(input_batch)
 
         # add rollout metrics to self.all_metrics
