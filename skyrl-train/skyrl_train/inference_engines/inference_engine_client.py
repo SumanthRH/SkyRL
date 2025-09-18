@@ -130,9 +130,7 @@ class InferenceEngineClient(InferenceEngineInterface):
             # if session_id is not provided, we'll use a random engine
             engine_idx = random.randint(0, len(self.engines) - 1)
         else:
-            assert isinstance(
-                session_id, (str, int)
-            ), "Trajectory ID must be an integer or string for `/chat/completions`"
+            assert isinstance(session_id, (str, int)), "Session ID must be an integer or string for `/chat/completions`"
             engine_idx = hash_with_sha256(str(session_id)) % len(self.engines)
         return await self.engines[engine_idx].chat_completion(request_payload)
 

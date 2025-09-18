@@ -53,12 +53,12 @@ def test_batched_more_engines_than_prompts():
 
 def test_with_session_ids_grouping_and_partition():
     num_engines = 4
-    # Ensure same trajectory IDs route to the same engine index
-    tids = ["A", "A", "B", "C", "B"]
+    # Ensure same session IDs route to the same engine index
+    sids = ["A", "A", "B", "C", "B"]
     # hash A ends in 45, B ends in 44, C ends in 69, with % 4 they become 1, 0, 1
-    engine_idx = [hash_with_sha256(tid) % num_engines for tid in tids]  # what we do in route_prompts_to_engines
+    engine_idx = [hash_with_sha256(sid) % num_engines for sid in sids]  # what we do in route_prompts_to_engines
     assert engine_idx == [1, 1, 0, 1, 0]
-    mapping = route_prompts_to_engines(num_prompts=5, num_inference_engines=num_engines, session_ids=tids)
+    mapping = route_prompts_to_engines(num_prompts=5, num_inference_engines=num_engines, session_ids=sids)
 
     assert mapping == {1: [0, 1, 3], 0: [2, 4]}
 

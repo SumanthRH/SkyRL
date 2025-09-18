@@ -721,7 +721,7 @@ def test_http_endpoint_error_handling():
         assert health_data["status"] == "healthy"
 
         # Tests below are for `/completions` endpoint.
-        # e.g. trajectory id wrong length, etc.
+        # e.g. session id wrong length, etc.
         # Additional tests for /v1/completions
         # C1: streaming not supported
         response = requests.post(

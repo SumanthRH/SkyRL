@@ -78,7 +78,7 @@ def route_prompts_to_engines(
     Args:
     - num_prompts: int - The number of prompts.
     - num_inference_engines: int - The number of inference engines.
-    - session_ids: Optional[Union[list[int], list[str]]] - The trajectory IDs.
+    - session_ids: Optional[Union[list[int], list[str]]] - The session IDs.
 
     Required:
     - num_prompts > 0
@@ -94,9 +94,9 @@ def route_prompts_to_engines(
     assert num_inference_engines > 0, "Number of inference engines must be greater than 0"
     if session_ids is not None:
         assert isinstance(session_ids, list) and all(
-            isinstance(tid, (int, str)) for tid in session_ids
-        ), "Trajectory ID must be a list of integers or strings"
-        assert len(session_ids) == num_prompts, "Trajectory ID must have the same length as the number of prompts"
+            isinstance(sid, (int, str)) for sid in session_ids
+        ), "Session ID must be a list of integers or strings"
+        assert len(session_ids) == num_prompts, "Session ID must have the same length as the number of prompts"
 
     # 1. session_id not provided, with a single prompt: route to a random engine for a naive load balancing.
     if session_ids is None and num_prompts == 1:
@@ -116,8 +116,8 @@ def route_prompts_to_engines(
         return engine_idx_to_prompt_ids
 
     # 3. session_id provided, we route by session_id
-    for i, cur_tid in enumerate(session_ids):
-        engine_idx = hash_with_sha256(str(cur_tid)) % num_inference_engines
+    for i, cur_sid in enumerate(session_ids):
+        engine_idx = hash_with_sha256(str(cur_sid)) % num_inference_engines
         engine_idx_to_prompt_ids.setdefault(engine_idx, []).append(i)
     return engine_idx_to_prompt_ids
 
