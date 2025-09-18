@@ -6,24 +6,29 @@ import asyncio
 import logging
 import os
 
+from skyagent.tasks.swebench.utils import get_eval_script
+
 # logging.basicConfig(level=logging.DEBUG)
 # OPENAI_API_KEY
-os.environ["OPENAI_API_KEY"] = "sc"
-# model = "Qwen/Qwen3-32B"
-model = "qwen/qwen2-0.5b-instruct"
-tokenizer = AutoTokenizer.from_pretrained(model)
+# os.environ["OPENAI_API_KEY"] = "sc"
+# # model = "Qwen/Qwen3-32B"
+# model = "qwen/qwen2-0.5b-instruct"
+# tokenizer = AutoTokenizer.from_pretrained(model)
 # dataset_file = "/data/sycao/r2e/train.parquet"
-dataset_file =  "/mnt/shared_storage/datasets/r2e-1000/validation.parquet"
+# dataset_file =  "/mnt/shared_storage/datasets/r2e-1000/validation.parquet"
+
 # read a few samples from the dataset
-dataset = load_dataset("parquet", data_files=dataset_file)["train"].select(range(1,2))
+dataset = load_dataset("SWE-Gym/SWE-Gym")['train']
 
-agent_generator = AutoAgentRunner.from_task(
-    './tests/test_openai_oh.yaml',
-    infer_engine=None,
-    tokenizer=tokenizer
-)
+# dataset = load_dataset("parquet", data_files=dataset_file)["train"].select(range(1,2))
 
-output = asyncio.run(agent_generator.run(dataset))
+# agent_generator = AutoAgentRunner.from_task(
+#     './tests/test_openai_oh.yaml',
+#     infer_engine=None,
+#     tokenizer=tokenizer
+# )
 
-print(output["rewards"])
-print(output["rollout_metrics"])
+eval_scripts = [get_eval_script(dataset[i], "swe-gym").replace("set -xo pipefail", "set -exo pipefail") for i in range(len(dataset))]
+
+# print(output["rewards"])
+# print(output["rollout_metrics"])

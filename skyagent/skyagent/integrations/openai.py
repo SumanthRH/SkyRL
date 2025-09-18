@@ -1,8 +1,6 @@
 from typing import Any, List, Dict, TypedDict
 import uuid
 from skyagent.integrations.base import AsyncInferBackend, GeneratorOutput, GeneratorInput, register_backend, BackendSpec
-from vllm import SamplingParams
-from vllm.inputs import TokensPrompt
 from openai import AsyncOpenAI
 from loguru import logger
 import os
