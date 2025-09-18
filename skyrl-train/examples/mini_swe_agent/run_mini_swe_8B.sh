@@ -12,9 +12,9 @@ CKPT_PATH="$HOME/ckpts/llm_mini_swe"
 # NOTE: For a multi-node cluster, ensure that this is on NFS so that you can save all trajectories in the same path
 MINISWE_TRAJ_DIR="$HOME/mini_swe_agent_trajs"
 
-NUM_GPUS=4
+NUM_GPUS=8
 NNODES=1
-NUM_INFERENCE_ENGINES=2
+NUM_INFERENCE_ENGINES=4
 TP_SIZE=2
 LOGGER=wandb
 
@@ -25,7 +25,7 @@ uv run --isolated --extra vllm --extra miniswe --env-file examples/mini_swe_agen
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
-  trainer.policy.model.path="Qwen/Qwen3-4B" \
+  trainer.policy.model.path="Qwen/Qwen3-8B" \
   trainer.placement.colocate_all=true \
   trainer.strategy=fsdp2 \
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
