@@ -871,6 +871,42 @@ def evaluate_result(runtime, instance, run_results, instance_id, trajectory_id, 
                 f'[{instance_id}] Unexpected output when applying patch:\n{apply_patch_output}'
             )
 
+
+def get_eval_script(instance, dataset) -> bool:
+    """Apply patch and evaluate the solution."""
+    if 'swe-gym' in dataset:
+        from swegym.harness.grading import get_eval_report
+        from swegym.harness.run_evaluation import (
+            APPLY_PATCH_FAIL,
+            APPLY_PATCH_PASS,
+        )
+        from swegym.harness.test_spec import (
+            make_test_spec,
+        )
+    elif 'swe-smith' in dataset:
+        from swesmith.harness.grading import get_eval_report
+        from swebench.harness.constants import (
+            APPLY_PATCH_FAIL,
+            APPLY_PATCH_PASS,
+        )
+        from .swesmith_utils import make_test_spec
+    else:  # Newer version of SWE-Bench have different import paths
+        from swebench.harness.grading import get_eval_report
+        from swebench.harness.constants import (
+            APPLY_PATCH_FAIL,
+            APPLY_PATCH_PASS,
+        )
+        from swebench.harness.test_spec import (
+            make_test_spec,
+        )
+    
+    # model_patch = run_results.get('git_patch', None)
+    # if not model_patch:
+    #     raise Exception(f"No git patch found for instance {instance_id}, trajectory {trajectory_id}")
+    
+    test_spec = make_test_spec(instance=instance)
+    return test_spec.eval_script
+
 def get_instance_docker_image(instance, data_source) -> str:
     if 'swe-smith' in data_source:
         image_name = instance['image_name']
