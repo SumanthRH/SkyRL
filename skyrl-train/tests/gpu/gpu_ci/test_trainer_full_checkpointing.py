@@ -80,7 +80,6 @@ def get_test_trainer_config(strategy: str, fsdp2_cpu_offload: bool = False) -> D
 
     # Megatron-specific
     if strategy == "megatron":
-        # FIXME: confirm this runs with 4 GPUs since that is what is used in CI
         cfg.trainer.policy.megatron_config.tensor_model_parallel_size = 2
         cfg.trainer.policy.megatron_config.pipeline_model_parallel_size = 2
         cfg.trainer.placement.policy_num_gpus_per_node = 4
@@ -138,10 +137,7 @@ def create_minimal_trainer(cfg: DictConfig):
         ("fsdp", False),
         ("fsdp2", False),
         ("fsdp2", True),
-        # FIXME (erictang000): Add megatron test when dependencies work
-        pytest.param(
-            "megatron", False, marks=pytest.mark.skip(reason="Skipping megatron test until dependency issues are fixed")
-        ),
+        pytest.param("megatron", False, marks=pytest.mark.megatron),
     ],
 )
 def test_trainer_full_checkpointing(ray_init_fixture, strategy, fsdp2_cpu_offload):
