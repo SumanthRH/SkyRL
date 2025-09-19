@@ -137,7 +137,8 @@ def create_minimal_trainer(cfg: DictConfig):
         ("fsdp", False),
         ("fsdp2", False),
         ("fsdp2", True),
-        pytest.param("megatron", False, marks=pytest.mark.megatron),
+        # FIXME (erictang000): Add megatron test when dependencies work
+        # pytest.param("megatron", False, marks=pytest.mark.megatron),
     ],
 )
 def test_trainer_full_checkpointing(ray_init_fixture, strategy, fsdp2_cpu_offload):
