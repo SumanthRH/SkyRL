@@ -23,6 +23,7 @@ from loguru import logger
 
 OBSERVATION_PROMPT = "give me another solution"
 
+SMALL_MODELS = ["Qwen/Qwen2.5-0.5B-Instruct", "unsloth/Llama-3.2-1B-Instruct"]
 
 def get_test_actor_config() -> DictConfig:
     """Get base config with test-specific overrides."""
@@ -59,9 +60,9 @@ register(
 )
 
 MODEL_TO_GENERATION_PROMPT = {
-    "Qwen/Qwen2.5-1.5B-Instruct": "<|im_start|>assistant\n",
+    "Qwen/Qwen2.5-0.5B-Instruct": "<|im_start|>assistant\n",
     "unsloth/Llama-3.2-1B-Instruct": "<|start_header_id|>assistant<|end_header_id|>\n\n",
-    "Qwen/Qwen3-0.6B": "<|im_start|>assistant\n",
+    "tiny-random/qwen3": "<|im_start|>assistant\n",
 }
 
 
@@ -71,7 +72,7 @@ async def run_generator_end_to_end(
     n_samples_per_prompt,
     num_inference_engines,
     tensor_parallel_size,
-    model="Qwen/Qwen2.5-1.5B-Instruct",
+    model="Qwen/Qwen2.5-0.5B-Instruct",
     max_prompt_length=512,
     max_input_length=2048,
     max_generate_length=1024,
@@ -112,6 +113,9 @@ async def run_generator_end_to_end(
             "sampling_params": {
                 "max_generate_length": max_generate_length,
                 "logprobs": None,
+                # NOTE (sumanthrh): Using this fix because of a generation bug with vllm < 0.10.2
+                # More details in: https://github.com/vllm-project/vllm/pull/22471
+                "top_p": 0.95,
             },
             "append_eos_token_after_stop_str_in_multi_turn": True,  # for search
             "max_input_length": max_input_length,
@@ -260,7 +264,7 @@ async def test_generator_multi_turn_search():
             n_samples_per_prompt=5,
             num_inference_engines=2,
             tensor_parallel_size=2,
-            model="Qwen/Qwen2.5-1.5B-Instruct",
+            model="Qwen/Qwen2.5-0.5B-Instruct",
             max_prompt_length=2048,
             max_input_length=4096,
             max_generate_length=1000,
@@ -277,7 +281,7 @@ async def test_generator_multi_turn_search():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "model_name", ["unsloth/Llama-3.2-1B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen3-0.6B"]
+    "model_name", ["unsloth/Llama-3.2-1B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct", "tiny-random/qwen3"]
 )
 async def test_generator_formatting_use_conversation_multi_turn(model_name):
     """
@@ -333,7 +337,7 @@ async def test_generator_formatting_use_conversation_multi_turn(model_name):
                 # On length stops, the model may not produce EOS at the end of each assistant turn.
                 # Only check that generation prompts are masked out.
                 logger.warning(f"Got stop reason {stop_reason}, so we did not fully check the response")
-            if model_name == "Qwen/Qwen3-0.6B":
+            if model_name == "tiny-random/qwen3":
                 assert (
                     sum(1 for _ in prompt_token_ids if _ == tokenizer.eos_token_id) == 1
                 )  # 1 user eos (no system for Qwen3)
@@ -345,7 +349,7 @@ async def test_generator_formatting_use_conversation_multi_turn(model_name):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "model_name", ["unsloth/Llama-3.2-1B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen3-0.6B"]
+    "model_name", ["unsloth/Llama-3.2-1B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct", "tiny-random/qwen3"]
 )
 async def test_generator_formatting_no_use_conversation_multi_turn(model_name):
     """
@@ -401,7 +405,7 @@ async def test_generator_formatting_no_use_conversation_multi_turn(model_name):
             assert (
                 sum(1 for _ in masked_in_resp_ids if _ == tokenizer.eos_token_id) == 1
             )  # 1 eos for each assistant response
-            if model_name == "Qwen/Qwen3-0.6B":
+            if model_name == "tiny-random/qwen3":
                 assert (
                     sum(1 for _ in prompt_token_ids if _ == tokenizer.eos_token_id) == 1
                 )  # 1 user eos (no system for Qwen3)
