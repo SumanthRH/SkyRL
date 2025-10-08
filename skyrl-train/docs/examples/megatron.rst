@@ -6,6 +6,11 @@ SkyRL supports NVIDIA's `Megatron-Core <https://developer.nvidia.com/megatron-co
 We provide example scripts for running efficient large scale MoE training with models like ``Qwen3-30B-A3B`` using Megatron in the `examples/megatron <https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-train/examples/megatron>`_ directory.
 For details on configuring the Megatron backend, and enabling checkpointing, see :ref:`megatron-configurations`, and :ref:`megatron-checkpointing`.
 
+When to use the Megatron backend
+--------------------------------
+
+SkyRL supports efficient data-parallel training with the FSDP and the DeepSpeed backend, with support for Ulysses sequence parallelism for long context training. The Megatron backend is useful for stack additional parallelism strategies (TP, PP, EP) on top of data parallelism. This is helpful both for just fitting larger models into memory, avoiding offloading optimizer state to CPU, and for training throughput for MoE models (with EP). The Megatron backend is thus useful for small MoE models like ``Qwen3-30B-A3B`` as well as largs scale training with models such as like ``Qwen3-235B-A22B``.
+
 Comparison to FSDP
 ------------------
 We show performance comparisons for the Megatron and FSDP2 backends on the Search-R1 task (4K max context length) for various model sizes in the table below. Training speed for small scale dense models with Megatron
