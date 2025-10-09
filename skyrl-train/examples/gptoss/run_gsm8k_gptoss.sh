@@ -45,7 +45,7 @@ uv run --isolated --extra $INFERENCE_BACKEND -m skyrl_train.entrypoints.main_bas
   trainer.max_prompt_length=512 \
   generator.sampling_params.max_generate_length=4096 \
   trainer.policy.optimizer_config.lr=1.0e-6 \
-  trainer.algorithm.use_kl_loss=true \
+  trainer.algorithm.use_kl_loss=false \
   generator.backend=$INFERENCE_BACKEND \
   generator.run_engines_locally=true \
   generator.weight_sync_backend=nccl \
