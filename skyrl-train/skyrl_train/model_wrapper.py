@@ -36,6 +36,7 @@ class HFModelWrapper(nn.Module):
         lora_alpha (int, optional): Alpha parameter for LoRA. Defaults to 16.
         lora_dropout (float, optional): Dropout rate for LoRA layers. Defaults to 0.
         target_modules (list, optional): List of target modules for applying LoRA. Defaults to None.
+        exclude_modules (list, optional): List of modules to exclude from applying LoRA. Defaults to None.
         ds_config (dict, optional): Configuration for DeepSpeed, enabling model partitioning across multiple GPUs. Defaults to None.
         device_map (dict, optional): Device mapping for loading the model onto specific devices. Defaults to None.
         packing_samples (bool, optional): Whether to pack samples during training. Defaults to False.
@@ -49,10 +50,12 @@ class HFModelWrapper(nn.Module):
         use_flash_attention_2=False,
         bf16=True,
         load_in_4bit=False,
+        # TODO(shu): combine all LoRA specific configs into one place?
         lora_rank=0,
         lora_alpha=16,
         lora_dropout=0,
         target_modules=None,
+        exclude_modules=None,
         ds_config=None,
         device_map=None,
         temperature=1.0,
@@ -133,6 +136,7 @@ class HFModelWrapper(nn.Module):
                     r=lora_rank,
                     lora_alpha=lora_alpha,
                     target_modules=target_modules,
+                    exclude_modules=exclude_modules,
                     lora_dropout=lora_dropout,
                     bias="none",
                 )
@@ -485,6 +489,7 @@ def get_llm_for_sequence_regression(
     lora_rank=0,
     lora_alpha=16,
     target_modules=None,
+    exclude_modules=None,
     lora_dropout=0,
     use_flash_attention_2=False,
     ds_config: dict = None,
@@ -555,9 +560,11 @@ def get_llm_for_sequence_regression(
     if lora_rank > 0:
         model.enable_input_require_grads()
         lora_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
             r=lora_rank,
             lora_alpha=lora_alpha,
             target_modules=target_modules,
+            exclude_modules=exclude_modules,
             lora_dropout=lora_dropout,
             bias="none",
         )
