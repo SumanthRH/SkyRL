@@ -98,8 +98,6 @@ class GPTOSSTrainer(RayPPOTrainer):
                     # if we are not continuing sampling, we sleep the inference engine
                     asyncio.run(self.inference_engine_client.sleep())
 
-                    # breakpoint()
-
                     # 1.2 postprocess rewards
                     with Timer("postprocess_generator_output", self.all_timings):
                         generator_output = self.postprocess_generator_output(generator_output, uids)

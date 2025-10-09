@@ -33,12 +33,12 @@ uv run --isolated --extra $INFERENCE_BACKEND -m skyrl_train.entrypoints.main_bas
   generator.inference_engine_tensor_parallel_size=4 \
   generator.enforce_eager=true \
   trainer.epochs=20 \
-  trainer.eval_batch_size=32 \
+  trainer.eval_batch_size=8 \
   trainer.eval_before_train=false \
   trainer.eval_interval=5 \
   trainer.update_epochs_per_batch=1 \
-  trainer.train_batch_size=32 \
-  trainer.policy_mini_batch_size=32 \
+  trainer.train_batch_size=8 \
+  trainer.policy_mini_batch_size=8 \
   trainer.micro_forward_batch_size_per_gpu=1 \
   trainer.micro_train_batch_size_per_gpu=1 \
   trainer.ckpt_interval=5 \

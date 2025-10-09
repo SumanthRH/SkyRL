@@ -5,12 +5,14 @@
 
 from typing import Optional, Tuple, Union
 from copy import deepcopy
+from packaging.version import Version
 
 import torch
 import torch.nn as nn
 from loguru import logger
 from peft import LoraConfig, TaskType, get_peft_model
 from peft.tuners.lora import LoraLayer
+import transformers
 from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, BitsAndBytesConfig
 from transformers.integrations.deepspeed import HfDeepSpeedConfig
 import numpy as np
@@ -112,6 +114,15 @@ class HFModelWrapper(nn.Module):
                 torch_dtype=torch.bfloat16 if bf16 else torch.float32,
                 device_map=device_map,
             )
+
+            # gpt oss
+            if Version(transformers.__version__) >= Version("4.56.2"):
+                from transformers import GptOssConfig
+                if isinstance(self.model.config, GptOssConfig):
+                    # patch attention with Unsloth's flex attn
+                    from skyrl_train.patches.gptoss.patch_transformers import patch_GptOssAttention
+                    patch_GptOssAttention()
+                    logger.info("Successfully patched GPTOSS' attention function...")
 
             # LoRA
             if lora_rank > 0:
