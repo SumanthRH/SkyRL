@@ -30,7 +30,7 @@ def get_test_actor_config() -> DictConfig:
 cfg = get_test_actor_config()
 
 actor_group = init_worker_with_type(
-    "ref",
+    "policy",
     shared_pg=None,
     colocate_all=False,
     num_gpus_per_node=cfg.trainer.placement.policy_num_gpus_per_node,

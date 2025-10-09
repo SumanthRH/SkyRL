@@ -123,7 +123,7 @@ def old_flex_attention_with_sink(
         if type(sliding_window) is int and sliding_window != 0 else \
         causal_mask_with_sink
     score_mod = generate_sink_score_mod(sink_weights)
-    block_mask = compiled_create_block_mask(mask_mod, qlen_Q, qlen_KV+1, device = key.device) # Add 1 since we padded
+    block_mask = compiled_create_block_mask(mask_mod, None, None, qlen_Q, qlen_KV+1, device = key.device) # Add 1 since we padded
     attn_output = (flex_attention if compile else uncompiled_flex_attention)(
         query,
         key_padded,

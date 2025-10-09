@@ -66,6 +66,7 @@ def patch_GptOssAttention():
             is_flex_attention_decoding,
             flex_attention_with_sink_decoding,
             flex_attention_add_sinks,
+            old_flex_attention_with_sink,
         )
         assert flex_attention_with_sink is not None
     except Exception as e:
@@ -216,7 +217,8 @@ def patch_GptOssAttention():
         #     )
         # attn_weights = None
         if self.training:
-            attn_output = flex_attention_with_sink(
+            print("using flex attention")
+            attn_output = old_flex_attention_with_sink(
                 self,
                 query_states,
                 key_states,
@@ -226,6 +228,7 @@ def patch_GptOssAttention():
         else:
             # Weirdly for inference, flex attention returns gibberish
             # Most likely due to left padding
+            print("using eager attention")
             attn_output, attn_weights = eager_attention_forward(
                 self,
                 query_states,
