@@ -13,7 +13,7 @@ from loguru import logger
 from peft import LoraConfig, TaskType, get_peft_model
 from peft.tuners.lora import LoraLayer
 import transformers
-from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoConfig, AutoModel, BitsAndBytesConfig, AutoModelForCausalLM
 from transformers.integrations.deepspeed import HfDeepSpeedConfig
 import numpy as np
 from skyrl_train.distributed.ulysses.utils import ulysses_pad_and_slice_inputs, gather_outputs_and_unpad
@@ -75,7 +75,9 @@ class HFModelWrapper(nn.Module):
             assert self.use_flash_attention_2, "Flash attention 2 should be used for `use_sample_packing`"
 
         if isinstance(pretrain_or_model, str):
-            attn_implementation = "flash_attention_2" if use_flash_attention_2 else "flex_attention"
+            attn_implementation = "flash_attention_2" if use_flash_attention_2 else "eager"
+
+            self.attn_implementation = attn_implementation
 
             # Note: dschf is defined in function scope to avoid global effects
             # https://huggingface.co/docs/transformers/deepspeed#non-trainer-deepspeed-integration
@@ -121,12 +123,16 @@ class HFModelWrapper(nn.Module):
             # gpt oss
             if Version(transformers.__version__) >= Version("4.56.2"):
                 from transformers import GptOssConfig
+
                 if isinstance(self.model.config, GptOssConfig):
                     # patch attention with Unsloth's flex attn
-                    from skyrl_train.patches.gptoss.patch_transformers import patch_GptOssAttention
-                    patch_GptOssAttention()
-                    logger.info("Successfully patched GPTOSS' attention function...")
+                    from skyrl_train.patches.gptoss.patch_transformers import custom_attention, patch_GptOssAttention
+                    from transformers import AttentionInterface
 
+                    AttentionInterface.register("custom_flex", custom_attention)
+                    # attn_implementation =  "custom_flex" <- not working
+                    patch_GptOssAttention()
+                    logger.info("patching GPTOSS' attention...")
             # LoRA
             if lora_rank > 0:
                 # https://github.com/huggingface/peft/issues/137
@@ -281,7 +287,7 @@ class HFModelWrapper(nn.Module):
         if self.sequence_parallel_size > 1:
             assert self.use_sample_packing, "sequence packing needs to be enabled for sequence parallelism"
             # don't pass any attention mask for flash attention 2. this will save an all gather.
-            attention_mask_fwd = None if self.use_flash_attention_2 else attention_mask_fwd
+            attention_mask_fwd = None if self.attn_implementation == "flash_attention_2" else attention_mask_fwd
 
             # slice for sequence parallelism
             # (bsz, seqlen) -> (bsz, seqlen//sp_size)
@@ -293,7 +299,7 @@ class HFModelWrapper(nn.Module):
             )
 
         # NOTE (sumanthrh): Once we have position_ids, we don't need attention mask with flash attention.
-        if self.use_sample_packing and self.use_flash_attention_2:
+        if self.use_sample_packing and self.attn_implementation == "flash_attention_2":
             # NOTE (sumanthrh): Don't use attention mask. position_ids is enough.
             # Not using attention mask leads to higher perf since flash attention varlen func is enabled
             output = self.model(sequences_fwd, attention_mask=None, position_ids=position_ids_fwd)

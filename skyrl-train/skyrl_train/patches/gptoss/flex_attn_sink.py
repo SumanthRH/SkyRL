@@ -27,22 +27,22 @@ import torch
 import functools
 import math
 import torch.nn.functional as F
+from torch.nn.attention.flex_attention import (
+    create_block_mask as _create_block_mask,
+)
 from .flex_attn_utils import (
-    create_block_mask_cached,
-    create_block_mask,
     compiled_create_block_mask,
     _flex_attention as uncompiled_flex_attention,
     flex_attention,
     FlexAttentionCache,
-
     causal_mask,
     generate_causal_mask_with_padding,
     generate_decoding_causal_mask_with_padding,
-
     generate_sliding_window_mask,
     generate_sliding_window_mask_with_padding,
     generate_decoding_sliding_window_mask_with_padding,
 )
+
 
 def causal_mask_with_sink(batch, head, q_idx, kv_idx):
     """
@@ -55,7 +55,10 @@ def causal_mask_with_sink(batch, head, q_idx, kv_idx):
     causal_mask = (q_idx + 1) >= kv_idx
     sink_first_column = kv_idx == 0
     return causal_mask | sink_first_column
+
+
 pass
+
 
 @functools.lru_cache
 def generate_sliding_window_with_sink(window_size: int):
@@ -67,21 +70,51 @@ def generate_sliding_window_with_sink(window_size: int):
         windowed_mask = (q_idx + 1) - kv_idx < window_size
         sink_first_column = kv_idx == 0
         return (causal_mask & windowed_mask) | sink_first_column
+
     sliding_window.__name__ = sliding_window.__doc__ = f"sliding_window_{window_size}_sink"
     return sliding_window
+
+
 pass
 
+# ))), **{}): got RuntimeError("vmap: It looks like you're calling .item() on a Tensor. We don't support vmap over calling .item() on a Tensor, please try to rewrite what you're doing with other operations. If error is occurring somewhere inside PyTorch internals, please file a bug report.")
+
+
 @functools.lru_cache
-def generate_sink_score_mod(sink_weights : torch.Tensor):
+def generate_sink_score_mod(sink_weights: torch.Tensor):
     def sink_score_mod(score, batch, head, q_idx, kv_idx):
         # Sink token is at the first location
         return torch.where(
             kv_idx == 0,
-            sink_weights[head].to(score.dtype) + 0.0, # Add +0 to allow gradients
+            sink_weights[head].to(score.dtype) + 0.0,  # Add +0 to allow gradients
             score,
         )
+
     return sink_score_mod
+
+
 pass
+
+
+@functools.lru_cache
+def generate_padding_mask(attention_mask):
+    if attention_mask.ndim == 4:
+        assert attention_mask.shape[1] == 1, f"invalid shape {attention_mask.shape}"
+        B, _, Q, K = attention_mask.shape
+        attention_mask = attention_mask.squeeze(1).flatten()
+
+        def padding_mask(batch, head, q_idx, kv_idx):
+            return ~attention_mask[batch * (Q * K) + K * q_idx + kv_idx].bool()
+
+    else:
+        assert attention_mask.ndim == 2, f"Unexpected ndim: {attention_mask.ndim}"
+        B, K = attention_mask.shape
+        attention_mask = attention_mask.flatten()
+
+        def padding_mask(batch, head, q_idx, kv_idx):
+            return attention_mask[batch * K + kv_idx].bool()
+
+    return padding_mask
 
 
 def old_flex_attention_with_sink(
@@ -89,10 +122,10 @@ def old_flex_attention_with_sink(
     query,
     key,
     value,
-    attention_mask = None,
-    scale = None,
-    sliding_window = None,
-    compile = True,
+    attention_mask=None,
+    scale=None,
+    sliding_window=None,
+    compile=True,
 ):
     """
     Allows one sink token to be attended to for full/sliding window attention
@@ -102,8 +135,8 @@ def old_flex_attention_with_sink(
     [WARNING] This only works for training. Inference fails since KV cache's
     absolute positioning will fail.
     """
-    if not self_attn.training:
-        raise NotImplementedError("Unsloth: This version of flex attention only works for training")
+    # if not self_attn.training:
+    #     raise NotImplementedError("Unsloth: This version of flex attention only works for training")
     assert getattr(self_attn, "sinks", None) is not None, "Unsloth: self_attn must have sinks"
     sink_weights = self_attn.sinks
     enable_gqa = getattr(self_attn, "num_key_value_groups", 1) != 1
@@ -112,29 +145,59 @@ def old_flex_attention_with_sink(
     bsz, heads_Q, qlen_Q, dim = query.shape
     _, heads_KV, qlen_KV, _ = key.shape
 
+    # print(f"Lengths: {bsz=}, {heads_Q=}, {qlen_Q=}, {qlen_KV=}, {dim=}")
+
     # Add K and V with a row of 0s to allow sinks to be placed there
-    key_padded   = torch.cat([key  .new_zeros(bsz, heads_KV, 1, dim), key],   dim = 2)
-    value_padded = torch.cat([value.new_zeros(bsz, heads_KV, 1, dim), value], dim = 2)
+    key_padded = torch.cat([key.new_zeros(bsz, heads_KV, 1, dim), key], dim=2)
+    value_padded = torch.cat([value.new_zeros(bsz, heads_KV, 1, dim), value], dim=2)
 
     # Check for sliding window
     sliding_window = sliding_window or getattr(self_attn, "sliding_window", None)
-    mask_mod = \
-        generate_sliding_window_with_sink(sliding_window) \
-        if type(sliding_window) is int and sliding_window != 0 else \
-        causal_mask_with_sink
+    mask_mod = (
+        generate_sliding_window_with_sink(sliding_window)
+        if type(sliding_window) is int and sliding_window != 0
+        else causal_mask_with_sink
+    )
+
+    if attention_mask is not None:
+        # print("using attention mask")
+        # print(f"Lengths: {bsz=}, {heads_Q=}, {qlen_Q=}, {qlen_KV=}, {dim=}")
+        attn_size = attention_mask.size()
+        # print(f"attn mnask size: {attn_size}", flush=True)
+        # 0 -> token it can attend to
+        if attention_mask.ndim == 4:
+            attention_mask = torch.cat([attention_mask.new_zeros((*attn_size[:-1], 1)), attention_mask], dim=-1)
+        else:
+            assert attention_mask.ndim == 2, f"Unexpected ndim {attention_mask.ndim}"
+            attention_mask = torch.cat([attention_mask.new_ones((*attn_size[:-1], 1)), attention_mask], dim=-1)
+        # print("new mask: ", attention_mask.shape)
+        # breakpoint()
+        _padding_mask = generate_padding_mask(attention_mask)
+
+        def combine_masks(mask1, mask2):
+            def final_mask(b, h, q, k):
+                return mask1(b, h, q, k) & mask2(b, h, q, k)
+
+            return final_mask
+
+        mask_mod = combine_masks(_padding_mask, mask_mod)
+        # mask_mod = and_masks(mask_mod, _padding_mask)
     score_mod = generate_sink_score_mod(sink_weights)
-    block_mask = compiled_create_block_mask(mask_mod, qlen_Q, qlen_KV+1, device = key.device) # Add 1 since we padded
+    block_mask = _create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV + 1, device=key.device)
+    # block_mask = compiled_create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV+1, device = key.device) # Add 1 since we padded
     attn_output = (flex_attention if compile else uncompiled_flex_attention)(
         query,
         key_padded,
         value_padded,
-        block_mask = block_mask,
-        score_mod = score_mod,
-        enable_gqa = enable_gqa,
-        scale = scale,
+        block_mask=block_mask,
+        score_mod=score_mod,
+        enable_gqa=enable_gqa,
+        scale=scale,
     )
     attn_output = attn_output.transpose(1, 2).contiguous()
     return attn_output
+
+
 pass
 
 
@@ -145,11 +208,11 @@ def is_flex_attention_decoding(self_attn, query):
         bsz, qlen_Q, dim = query.shape
     is_training = self_attn.training
     has_flex_cache = hasattr(self_attn, "_flex_attention_cache")
-    if is_training or (
-        not is_training and (not has_flex_cache or qlen_Q != 1)
-    ):
+    if is_training or (not is_training and (not has_flex_cache or qlen_Q != 1)):
         return False
     return True
+
+
 pass
 
 
@@ -158,11 +221,11 @@ def flex_attention_with_sink(
     query,
     key,
     value,
-    attention_mask = None,
-    scale = None,
-    sliding_window = None,
-    compile = True,
-    has_static_cache = True,
+    attention_mask=None,
+    scale=None,
+    sliding_window=None,
+    compile=True,
+    has_static_cache=True,
 ):
     """
     Allows one sink token to be attended to for full/sliding window attention
@@ -187,9 +250,7 @@ def flex_attention_with_sink(
     has_flex_cache = hasattr(self_attn, "_flex_attention_cache")
     # Handle inference and training
     if attention_mask is not None and has_static_cache:
-        if is_training or (
-            not is_training and (not has_flex_cache or qlen_Q != 1)
-        ):
+        if is_training or (not is_training and (not has_flex_cache or qlen_Q != 1)):
             if is_training:
                 if has_flex_cache:
                     del self_attn._flex_attention_cache
@@ -199,22 +260,27 @@ def flex_attention_with_sink(
                 assert attention_mask.dim() == 2, f"Unsloth: Attention_mask has dim = {attention_mask.dim()}"
                 # We must account for left padding
                 padding_start_idx = attention_mask.argmax(1).to(query.device)
-                do_padding = torch.arange(max(qlen_Q, qlen_KV), device = query.device).repeat((bsz, 1)) < padding_start_idx.unsqueeze(0).T
+                do_padding = (
+                    torch.arange(max(qlen_Q, qlen_KV), device=query.device).repeat((bsz, 1))
+                    < padding_start_idx.unsqueeze(0).T
+                )
                 # We also make all padded tokens Q=1, K=-inf
                 # Note if Q=0, K=0, Q*K = 0, but exp(0) = 1, so that's wrong
                 # Only exp(-inf) = 0. So Q=1, K=-inf, Q*K = -inf
-                query.transpose(2, 1)[do_padding[:, :qlen_Q ]] = 1
-                key  .transpose(2, 1)[do_padding[:, :qlen_KV]] = -torch.inf
+                query.transpose(2, 1)[do_padding[:, :qlen_Q]] = 1
+                key.transpose(2, 1)[do_padding[:, :qlen_KV]] = -torch.inf
                 value.transpose(2, 1)[do_padding[:, :qlen_KV]] = 0
                 # Use special padded mask creators
-                mask_mod = prefill_mask_mod = \
-                    generate_sliding_window_mask_with_padding(sliding_window, padding_start_idx) \
-                    if type(sliding_window) is int and sliding_window != 0 else \
-                    generate_causal_mask_with_padding(padding_start_idx)
-                decoding_mask_mod = \
-                    generate_decoding_sliding_window_mask_with_padding(sliding_window, padding_start_idx) \
-                    if type(sliding_window) is int and sliding_window != 0 else \
-                    generate_decoding_causal_mask_with_padding(padding_start_idx)
+                mask_mod = prefill_mask_mod = (
+                    generate_sliding_window_mask_with_padding(sliding_window, padding_start_idx)
+                    if type(sliding_window) is int and sliding_window != 0
+                    else generate_causal_mask_with_padding(padding_start_idx)
+                )
+                decoding_mask_mod = (
+                    generate_decoding_sliding_window_mask_with_padding(sliding_window, padding_start_idx)
+                    if type(sliding_window) is int and sliding_window != 0
+                    else generate_decoding_causal_mask_with_padding(padding_start_idx)
+                )
                 self_attn._flex_attention_cache = FlexAttentionCache(key, decoding_mask_mod, sliding_window)
         else:
             block_mask = self_attn._flex_attention_cache(key)
@@ -222,22 +288,23 @@ def flex_attention_with_sink(
     pass
     # Create mask_mod on training and decoding steps
     if mask_mod is None:
-        mask_mod = \
-            generate_sliding_window_mask(sliding_window) \
-            if type(sliding_window) is int and sliding_window != 0 else \
-            causal_mask
+        mask_mod = (
+            generate_sliding_window_mask(sliding_window)
+            if type(sliding_window) is int and sliding_window != 0
+            else causal_mask
+        )
     if block_mask is None:
-        block_mask = compiled_create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV, device = key.device)
+        block_mask = compiled_create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV, device=key.device)
 
     attn_output, logsumexp = (flex_attention if compile else uncompiled_flex_attention)(
         query,
         key,
         value,
-        block_mask = block_mask,
-        score_mod = None, # None needed
-        enable_gqa = enable_gqa,
-        scale = scale,
-        return_lse = True, # log(sum(exp(xi)))
+        block_mask=block_mask,
+        score_mod=None,  # None needed
+        enable_gqa=enable_gqa,
+        scale=scale,
+        return_lse=True,  # log(sum(exp(xi)))
     )
 
     #### 3 versions to add sink tokens ####
@@ -245,7 +312,7 @@ def flex_attention_with_sink(
     # softmax_sum = torch.exp(logsumexp)
     # new_denominator = softmax_sum / (softmax_sum + torch.exp(self_attn.sinks.unsqueeze(1)))
     # sink_scale = new_denominator
-    
+
     ### Version 2: logaddexp does log(exp(x1) + exp(x2))
     # logsumexp_new = torch.logaddexp(logsumexp, self_attn.sinks.unsqueeze(1))
     # sink_scale = torch.exp(logsumexp - logsumexp_new)
@@ -259,7 +326,10 @@ def flex_attention_with_sink(
 
     attn_output = attn_output.transpose(1, 2).contiguous()
     return attn_output
+
+
 pass
+
 
 # Fails sometimes
 # @torch.compile(dynamic = True, fullgraph = False, mode = "reduce-overhead")
@@ -268,7 +338,7 @@ def flex_attention_with_sink_decoding(
     query,
     key,
     value,
-    scale = None,
+    scale=None,
 ):
     assert getattr(self_attn, "sinks", None) is not None, "Unsloth: self_attn must have sinks"
     enable_gqa = getattr(self_attn, "num_key_value_groups", 1) != 1
@@ -278,14 +348,17 @@ def flex_attention_with_sink_decoding(
         query,
         key,
         value,
-        block_mask = block_mask,
-        score_mod = None, # None needed
-        enable_gqa = enable_gqa,
-        scale = scale,
-        return_lse = True, # log(sum(exp(xi)))
+        block_mask=block_mask,
+        score_mod=None,  # None needed
+        enable_gqa=enable_gqa,
+        scale=scale,
+        return_lse=True,  # log(sum(exp(xi)))
     )
     return attn_output, logsumexp
+
+
 pass
+
 
 def flex_attention_add_sinks(
     self_attn,
@@ -293,11 +366,14 @@ def flex_attention_add_sinks(
     logsumexp,
 ):
     logsumexp -= self_attn.sinks.unsqueeze(1)
-    sink_scale = torch.sigmoid(logsumexp, out = logsumexp)
+    sink_scale = torch.sigmoid(logsumexp, out=logsumexp)
     attn_output *= sink_scale.unsqueeze(-1).to(attn_output.dtype)
     attn_output = attn_output.transpose(1, 2).contiguous()
     return attn_output
+
+
 pass
+
 
 def flash_attention_left_padded(
     self_attn,
@@ -305,10 +381,10 @@ def flash_attention_left_padded(
     key_states,
     value_states,
     attention_mask,
-    is_causal = True,
-    window_size_left = None,
-    dropout_p = 0.0,
-    scale = None,
+    is_causal=True,
+    window_size_left=None,
+    dropout_p=0.0,
+    scale=None,
 ):
     assert attention_mask.dtype in (torch.int32, torch.int64, torch.bool)
     device = query_states.device
@@ -334,7 +410,7 @@ def flash_attention_left_padded(
     flat_mask = attention_mask.reshape(-1).to(device=device)
     keep = flat_mask.nonzero(as_tuple=False).squeeze(-1)
 
-    Q_flat = Q.reshape(bsz * qlen_Q,  n_heads,    head_dim)
+    Q_flat = Q.reshape(bsz * qlen_Q, n_heads, head_dim)
     K_flat = K.reshape(bsz * qlen_KV, n_kv_heads, head_dim)
     V_flat = V.reshape(bsz * qlen_KV, n_kv_heads, head_dim)
 
@@ -346,7 +422,9 @@ def flash_attention_left_padded(
     if scale is None:
         scale = 1.0 / math.sqrt(head_dim)
 
-    kwargs = dict( scale = scale,)
+    kwargs = dict(
+        scale=scale,
+    )
     # Only pass window sizes if you actually want sliding window
     if window_size_left is not None:
         kwargs["window_size_left"] = int(window_size_left)
@@ -364,17 +442,17 @@ def flash_attention_left_padded(
     (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
     """
     attn_output, logsumexp, rng_state, _, _ = torch.ops.aten._flash_attention_forward(
-        query = Q_unpad,
-        key = K_unpad,
-        value = V_unpad,
-        cum_seq_q = cu_seqlens,
-        cum_seq_k = cu_seqlens, 
-        max_q = max_seqlen,
-        max_k = max_seqlen,
-        dropout_p = float(dropout_p),
-        is_causal = bool(is_causal),
-        return_debug_mask = False,
-        **kwargs
+        query=Q_unpad,
+        key=K_unpad,
+        value=V_unpad,
+        cum_seq_q=cu_seqlens,
+        cum_seq_k=cu_seqlens,
+        max_q=max_seqlen,
+        max_k=max_seqlen,
+        dropout_p=float(dropout_p),
+        is_causal=bool(is_causal),
+        return_debug_mask=False,
+        **kwargs,
     )
     # All 3 versions scale the original attn_output!
     sink_scale = torch.sigmoid(logsumexp - self_attn.sinks.unsqueeze(1))
@@ -386,4 +464,6 @@ def flash_attention_left_padded(
 
     attn_output = attn_output.contiguous()
     return attn_output
+
+
 pass

@@ -12,12 +12,12 @@ DB_PATH="$HOME/data/sql/db_files/data"
 CKPT_PATH="$HOME/ckpts/skyrl_sql_oss_ckpt_new"
 
 NUM_GPUS=8
-NUM_INFERENCE_ENGINES=4
-TP_SIZE=2
-MAX_INPUT_LENGTH=29000
+NUM_INFERENCE_ENGINES=2
+TP_SIZE=4
+MAX_INPUT_LENGTH=20000
 MAX_GENERATE_LENGTH=3000
 TRAIN_BATCH_SIZE=16
-MAX_TURNS=6
+MAX_TURNS=4
 
 uv run --isolated --extra vllm -m examples.gptoss.main_gptoss \
   trainer.algorithm.advantage_estimator="step_wise" \
@@ -36,7 +36,7 @@ uv run --isolated --extra vllm -m examples.gptoss.main_gptoss \
   generator.num_inference_engines=$NUM_INFERENCE_ENGINES \
   generator.inference_engine_tensor_parallel_size=$TP_SIZE \
   trainer.train_batch_size=$TRAIN_BATCH_SIZE \
-  trainer.micro_forward_batch_size_per_gpu=2 \
+  trainer.micro_forward_batch_size_per_gpu=1 \
   trainer.micro_train_batch_size_per_gpu=1 \
   trainer.max_prompt_length=6000 \
   generator.max_input_length=$MAX_INPUT_LENGTH \
@@ -64,12 +64,13 @@ uv run --isolated --extra vllm -m examples.gptoss.main_gptoss \
   environment.skyrl_gym.text2sql.db_path=$DB_PATH \
   trainer.logger="wandb" \
   trainer.project_name="gptoss_multiturn" \
-  trainer.run_name="skyrlsql_multiturn_test_7b" \
+  trainer.run_name="skyrlsql_multiturn_test_gptoss_flex" \
   trainer.resume_mode=null \
   trainer.ckpt_path=$CKPT_PATH \
   trainer.eval_batch_size=1024 \
   trainer.eval_before_train=false \
   trainer.eval_interval=5 \
-  +trainer.algorithm.use_same_reward_all_steps=True \
   trainer.algorithm.policy_loss_type="dual_clip" \
+  trainer.flash_attn=true \
+  trainer.use_sample_packing=false \
   $@

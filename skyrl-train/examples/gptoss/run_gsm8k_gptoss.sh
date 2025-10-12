@@ -28,17 +28,17 @@ uv run --isolated --extra $INFERENCE_BACKEND -m skyrl_train.entrypoints.main_bas
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
   trainer.placement.ref_num_gpus_per_node=$NUM_GPUS \
   generator.num_inference_engines=2 \
-  trainer.flash_attn=false \
+  trainer.flash_attn=true \
   trainer.use_sample_packing=false \
   generator.inference_engine_tensor_parallel_size=4 \
   generator.enforce_eager=true \
   trainer.epochs=20 \
-  trainer.eval_batch_size=8 \
+  trainer.eval_batch_size=32 \
   trainer.eval_before_train=false \
   trainer.eval_interval=5 \
   trainer.update_epochs_per_batch=1 \
-  trainer.train_batch_size=8 \
-  trainer.policy_mini_batch_size=8 \
+  trainer.train_batch_size=32 \
+  trainer.policy_mini_batch_size=32 \
   trainer.micro_forward_batch_size_per_gpu=1 \
   trainer.micro_train_batch_size_per_gpu=1 \
   trainer.ckpt_interval=5 \
@@ -58,7 +58,7 @@ uv run --isolated --extra $INFERENCE_BACKEND -m skyrl_train.entrypoints.main_bas
   trainer.project_name="gsm8k_gptoss" \
   trainer.run_name="gsm8k_test_gptoss_low" \
   trainer.resume_mode=latest \
-  trainer.ckpt_path="$HOME/ckpts/gsm8k_1.5B_ckpt_gptoss" \
+  trainer.ckpt_path="$HOME/ckpts/gsm8k_1.5B_ckpt_gptoss_flex_working" \
   +generator.chat_template_kwargs={reasoning_effort:'low'} \
   trainer.dump_data_batch=true \
   $@

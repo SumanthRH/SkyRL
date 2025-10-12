@@ -1,16 +1,15 @@
-
 import ray
-import pytest
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from tests.gpu.utils import init_worker_with_type, make_dummy_experience, validate_cfg
+from tests.gpu.utils import init_worker_with_type, make_dummy_experience
 from skyrl_train.utils.utils import print_mem
 from skyrl_train.entrypoints.main_base import config_dir
 
 
-MODEL_NAME = "unsloth/gpt-oss-20b-BF16"
-# MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+# MODEL_NAME = "unsloth/gpt-oss-20b-BF16"
+MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+
 
 def get_test_actor_config() -> DictConfig:
     with hydra.initialize_config_dir(config_dir=config_dir):
@@ -24,7 +23,6 @@ def get_test_actor_config() -> DictConfig:
     cfg.trainer.algorithm = algorithm_config
 
     return cfg
-
 
 
 cfg = get_test_actor_config()
