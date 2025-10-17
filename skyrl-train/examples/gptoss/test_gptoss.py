@@ -48,7 +48,7 @@ input_ids = tokenizer.encode(input_text, return_tensors="pt")
 # position_ids = torch.arange(input_ids.shape[1]).unsqueeze(0)
 # input_ids = torch.cat([input_ids, input_ids], dim=1)
 # position_ids = torch.cat([position_ids, position_ids,], dim=1)
-input_ids = input_ids.repeat((1, 600))
+# input_ids = input_ids.repeat((1, 600))
 input_ids = torch.cat(
     [
         torch.tensor(

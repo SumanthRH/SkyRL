@@ -24,6 +24,7 @@ __all__ = [
 ]
 
 import torch
+from typing import Optional
 import functools
 import math
 import torch.nn.functional as F
@@ -77,11 +78,21 @@ def generate_sliding_window_with_sink(window_size: int):
 
 pass
 
-# ))), **{}): got RuntimeError("vmap: It looks like you're calling .item() on a Tensor. We don't support vmap over calling .item() on a Tensor, please try to rewrite what you're doing with other operations. If error is occurring somewhere inside PyTorch internals, please file a bug report.")
-
 
 @functools.lru_cache
-def generate_sink_score_mod(sink_weights: torch.Tensor):
+def generate_sink_score_mod(
+    sink_weights: torch.Tensor, sequence_parallel_size: int = 1, sequence_parallel_rank: Optional[int] = None
+):
+    num_heads = sink_weights.size(0)
+    if sequence_parallel_rank is None and sequence_parallel_size > 1:
+        raise ValueError("Must provide `sequence_parallel_rank` with `sequence_parallel_size` > 1")
+    elif sequence_parallel_rank is None:
+        sequence_parallel_rank = 0
+    offset = num_heads // sequence_parallel_size
+    if sequence_parallel_size > 1:
+        sink_weights = torch.tensor_split(sink_weights, sequence_parallel_size, dim=0)[sequence_parallel_rank]
+
+    # print(f"Offset: for sink score {offset} with rank {sequence_parallel_rank}. {sink_weights.shape=}, {num_heads=}")
     def sink_score_mod(score, batch, head, q_idx, kv_idx):
         # Sink token is at the first location
         return torch.where(
@@ -118,14 +129,16 @@ def generate_padding_mask(attention_mask):
 
 
 def old_flex_attention_with_sink(
-    self_attn,
     query,
     key,
     value,
     attention_mask=None,
     scale=None,
     sliding_window=None,
+    sinks=None,
+    num_key_value_groups=1,
     compile=True,
+    **kwargs,
 ):
     """
     Allows one sink token to be attended to for full/sliding window attention
@@ -137,22 +150,21 @@ def old_flex_attention_with_sink(
     """
     # if not self_attn.training:
     #     raise NotImplementedError("Unsloth: This version of flex attention only works for training")
-    assert getattr(self_attn, "sinks", None) is not None, "Unsloth: self_attn must have sinks"
-    sink_weights = self_attn.sinks
-    enable_gqa = getattr(self_attn, "num_key_value_groups", 1) != 1
-    scale = getattr(self_attn, "scaling", None) or getattr(self_attn, "scale", None) or scale
+    query = query.transpose(1, 2)
+    key = key.transpose(1, 2)
+    value = value.transpose(1, 2)
 
+    enable_gqa = num_key_value_groups != 1
     bsz, heads_Q, qlen_Q, dim = query.shape
     _, heads_KV, qlen_KV, _ = key.shape
 
-    # print(f"Lengths: {bsz=}, {heads_Q=}, {qlen_Q=}, {qlen_KV=}, {dim=}")
+    # print(f"Lengths: {bsz=}, {heads_Q=}, {qlen_Q=}, {qlen_KV=}, {dim=} {heads_KV=}")
 
     # Add K and V with a row of 0s to allow sinks to be placed there
     key_padded = torch.cat([key.new_zeros(bsz, heads_KV, 1, dim), key], dim=2)
     value_padded = torch.cat([value.new_zeros(bsz, heads_KV, 1, dim), value], dim=2)
 
     # Check for sliding window
-    sliding_window = sliding_window or getattr(self_attn, "sliding_window", None)
     mask_mod = (
         generate_sliding_window_with_sink(sliding_window)
         if type(sliding_window) is int and sliding_window != 0
@@ -182,7 +194,12 @@ def old_flex_attention_with_sink(
 
         mask_mod = combine_masks(_padding_mask, mask_mod)
         # mask_mod = and_masks(mask_mod, _padding_mask)
-    score_mod = generate_sink_score_mod(sink_weights)
+
+    sequence_parallel_size = kwargs.get("sequence_parallel_size", 1)
+    sequence_parallel_rank = kwargs.get("sequence_parallel_rank", None)
+    score_mod = generate_sink_score_mod(
+        sinks, sequence_parallel_size=sequence_parallel_size, sequence_parallel_rank=sequence_parallel_rank
+    )
     block_mask = _create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV + 1, device=key.device)
     # block_mask = compiled_create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV+1, device = key.device) # Add 1 since we padded
     attn_output = (flex_attention if compile else uncompiled_flex_attention)(

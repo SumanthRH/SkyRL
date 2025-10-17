@@ -6,7 +6,7 @@
 from typing import Optional, Tuple, Union
 from copy import deepcopy
 from packaging.version import Version
-
+import os
 import torch
 import torch.nn as nn
 from loguru import logger
@@ -16,7 +16,11 @@ import transformers
 from transformers import AutoConfig, AutoModel, BitsAndBytesConfig, AutoModelForCausalLM
 from transformers.integrations.deepspeed import HfDeepSpeedConfig
 import numpy as np
-from skyrl_train.distributed.ulysses.utils import ulysses_pad_and_slice_inputs, gather_outputs_and_unpad
+from skyrl_train.distributed.ulysses.utils import (
+    get_ulysses_sequence_parallel_rank,
+    ulysses_pad_and_slice_inputs,
+    gather_outputs_and_unpad,
+)
 from skyrl_train.utils.torch_utils import chunked_entropy_from_logits, logprobs_from_logits
 from flash_attn.bert_padding import pad_input, unpad_input
 
@@ -126,12 +130,20 @@ class HFModelWrapper(nn.Module):
 
                 if isinstance(self.model.config, GptOssConfig):
                     # patch attention with Unsloth's flex attn
-                    from skyrl_train.patches.gptoss.patch_transformers import custom_attention, patch_GptOssAttention
-                    from transformers import AttentionInterface
+                    from skyrl_train.patches.gptoss.patch_transformers import (
+                        custom_attention,
+                        patch_GptOssAttention,
+                        custom_attention_mask,
+                    )
+                    from transformers import AttentionInterface, AttentionMaskInterface
 
                     AttentionInterface.register("custom_flex", custom_attention)
+                    AttentionMaskInterface.register("custom_flex", custom_attention_mask)
                     # attn_implementation =  "custom_flex" <- not working
-                    patch_GptOssAttention()
+                    sequence_parallel_rank = get_ulysses_sequence_parallel_rank()
+                    print(f"sequence parallel rank : {sequence_parallel_rank}")
+                    patch_GptOssAttention(self.sequence_parallel_size, sequence_parallel_rank=sequence_parallel_rank)
+                    self.model.set_attn_implementation("custom_flex")
                     logger.info("patching GPTOSS' attention...")
             # LoRA
             if lora_rank > 0:
@@ -293,16 +305,24 @@ class HFModelWrapper(nn.Module):
             sequences_fwd, position_ids_fwd, attention_mask_fwd, pad_size = ulysses_pad_and_slice_inputs(
                 sequences_fwd, position_ids_fwd, attention_mask_fwd, self.sequence_parallel_size
             )
+            print(
+                f"attention shape: {attention_mask_fwd.shape=} {position_ids_fwd.shape=}, {sequences_fwd.shape=}, RANK: {os.environ.get('RANK', None)}",
+                flush=True,
+            )
             sequences_rolled, _, _, _ = ulysses_pad_and_slice_inputs(
                 sequences_rolled, None, None, self.sequence_parallel_size
             )
 
+        if attention_mask_fwd is None:
+            print("attention is none right here")
+            breakpoint()
         # NOTE (sumanthrh): Once we have position_ids, we don't need attention mask with flash attention.
         if self.use_sample_packing and self.attn_implementation == "flash_attention_2":
             # NOTE (sumanthrh): Don't use attention mask. position_ids is enough.
             # Not using attention mask leads to higher perf since flash attention varlen func is enabled
             output = self.model(sequences_fwd, attention_mask=None, position_ids=position_ids_fwd)
         else:
+            print("FWD: entered here")
             output = self.model(sequences_fwd, attention_mask=attention_mask_fwd, position_ids=position_ids_fwd)
 
         logits_BSV = output["logits"]

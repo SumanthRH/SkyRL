@@ -5,6 +5,8 @@ from packaging.version import Version
 import inspect
 
 from loguru import logger
+from transformers.masking_utils import causal_mask_function
+from skyrl_train.distributed.ulysses.monkey_patch import make_ulysses_attn_forward
 
 
 def patch_function_past_key_values(
@@ -53,7 +55,7 @@ def patch_function_past_key_values(
 pass
 
 
-def patch_GptOssAttention():
+def patch_GptOssAttention(sequence_parallel_size: int = 1, sequence_parallel_rank: Optional[int] = None):
     try:
         from .flex_attn_sink import (
             flex_attention_with_sink,
@@ -72,6 +74,10 @@ def patch_GptOssAttention():
         raise
 
     torch._dynamo.config.cache_size_limit = 256
+
+    flex_attention_forward = old_flex_attention_with_sink
+    if sequence_parallel_size > 1:
+        flex_attention_forward = make_ulysses_attn_forward(old_flex_attention_with_sink)
 
     def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
         """
@@ -178,8 +184,12 @@ def patch_GptOssAttention():
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        if attention_mask is None:
+            print("attention mask is None here first!")
+            breakpoint()
+        # print(f"ENTER CUSTOM ATTN: key value shape: {hidden_states.shape=} {self.head_dim=}")
         input_shape = hidden_states.shape[:-1]
-        hidden_shape = (*input_shape, -1, self.head_dim)  # 1, 7, -1, 64
+        hidden_shape = (*input_shape, -1, self.head_dim)  # 2, 32, 2880/64, 64
         # print(f"{hidden_shape=}")
         query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)  # 1, -1, 7, 64
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
@@ -216,8 +226,25 @@ def patch_GptOssAttention():
         # attn_weights = None
         # if self.training:
         # print("using old flex attention")
-        attn_output = old_flex_attention_with_sink(
-            self, query_states, key_states, value_states, attention_mask=attention_mask
+        assert getattr(self, "sinks", None) is not None, "Unsloth: self_attn must have sinks"
+        sinks = self.sinks
+        num_key_value_groups = getattr(self, "num_key_value_groups", 1)
+        scale = getattr(self, "scaling", None) or getattr(self, "scale", None) or scale
+        sliding_window = getattr(self, "sliding_window", None)
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+        attn_output = flex_attention_forward(
+            query_states,
+            key_states,
+            value_states,
+            attention_mask=attention_mask,
+            scale=scale,
+            num_key_value_groups=num_key_value_groups,
+            sinks=sinks,
+            sliding_window=sliding_window,
+            sequence_parallel_size=sequence_parallel_size,
+            sequence_parallel_rank=sequence_parallel_rank,
         )
         attn_weights = None
         # else:
@@ -284,10 +311,44 @@ def custom_attention(
     attention_mask: Optional[torch.Tensor],  # required arg
     **kwargs,
 ):
-    # print("using flex attention")
     from .flex_attn_sink import (
         old_flex_attention_with_sink,
     )
 
     attn_output = old_flex_attention_with_sink(module, query, key, value, attention_mask=attention_mask)
     return attn_output, None
+
+
+def custom_attention_mask(
+    batch_size: int,
+    cache_position: torch.Tensor,
+    kv_length: int,
+    kv_offset: int = 0,
+    mask_function: Callable = causal_mask_function,
+    attention_mask: Optional[torch.Tensor] = None,
+    **kwargs,
+):
+    """
+    Create the attention mask necessary to use FA2. Since FA2 is un-padded by definition, here we simply return
+    `None` if the mask is fully causal, or we return the 2D mask which will then be used to extract the seq_lens.
+    We just slice it in case of sliding window.
+
+    Args:
+        batch_size (`int`):
+            The batch size of the input sequence.
+        cache_position (`torch.Tensor`):
+            A tensor of shape (query_length,) indicating the current indices of the input sequence elements.
+        kv_length (`int`):
+            The size that the key and value states will have during the attention computation.
+        kv_offset (`int`, optional):
+            An optional offset to indicate at which first position the key and values states will refer to.
+        mask_function (`Callable`):
+            The mask factory function describing the mask pattern.
+        attention_mask (`torch.Tensor`, optional):
+            The 2D attention mask corresponding to padded tokens of shape (batch_size, number_of_seen_tokens+q_length)
+    """
+    if attention_mask is not None:
+        # Here we need to slice from the right if using sliding or chunked (for full attention, this is equivalent to doing nothing)
+        attention_mask = attention_mask[:, -kv_length:]
+
+    return attention_mask

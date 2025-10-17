@@ -9,17 +9,19 @@ set -x
 # change these paths to your own
 DATA_DIR="$HOME/data/sql"
 DB_PATH="$HOME/data/sql/db_files/data"
-CKPT_PATH="$HOME/ckpts/skyrl_sql_oss_ckpt_new"
+CKPT_PATH="$HOME/ckpts/skyrl_sql_oss_ckpt_oct15"
 
 NUM_GPUS=8
 NUM_INFERENCE_ENGINES=2
 TP_SIZE=4
-MAX_INPUT_LENGTH=20000
+MAX_INPUT_LENGTH=29000
 MAX_GENERATE_LENGTH=3000
 TRAIN_BATCH_SIZE=16
-MAX_TURNS=4
+MAX_TURNS=6
 
-uv run --isolated --extra vllm -m examples.gptoss.main_gptoss \
+# unsloth/gpt-oss-20b-BF16
+
+uv run --isolated --extra vllm --env-file .env -m examples.gptoss.main_gptoss \
   trainer.algorithm.advantage_estimator="step_wise" \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
@@ -30,7 +32,7 @@ uv run --isolated --extra vllm -m examples.gptoss.main_gptoss \
   trainer.policy.fsdp_config.cpu_offload=false \
   trainer.ref.fsdp_config.cpu_offload=true \
   trainer.policy.optimizer_config.max_grad_norm=0.5 \
-  trainer.policy.sequence_parallel_size=1 \
+  trainer.policy.sequence_parallel_size=4 \
   trainer.placement.policy_num_gpus_per_node=$NUM_GPUS \
   trainer.placement.ref_num_gpus_per_node=$NUM_GPUS \
   generator.num_inference_engines=$NUM_INFERENCE_ENGINES \

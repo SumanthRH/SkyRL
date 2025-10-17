@@ -63,6 +63,8 @@ class DistributedTorchRayActor:
         os.environ["MASTER_PORT"] = str(self._master_port)
         os.environ["WORLD_SIZE"] = str(self._world_size)
         os.environ["RANK"] = str(self._rank)
+        # HACK
+        # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         # NOTE: Ray will automatically set the CUDA_VISIBLE_DEVICES
         # environment variable for each actor, so always set device to 0
         # os.environ["LOCAL_RANK"] = str(self._local_rank)
@@ -79,13 +81,17 @@ class DistributedTorchRayActor:
 
     def init_worker_process_group(self):
         if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group(backend="nccl")
+            print("Entering here for th init process group")
+            from datetime import timedelta
+
+            torch.distributed.init_process_group(backend="nccl", timeout=timedelta(minutes=30))
 
         # setup device mesh
         # TODO: Support TP / PP for DeepSpeed
         # NOTE (sumanthrh): Device mesh and mesh rank are rank specific attributes. For the current way the strategy is defined, it is only meant to interact with worker state; not hold worker state. Thus, this should live outside the strategy object.
         # This device mesh can be common across all the strategies we use
         dp_size = self._world_size // self.sequence_parallel_size
+        # TODO: after upgrading torch, add `backed_override` to configure better timeouts
         device_mesh = torch.distributed.device_mesh.init_device_mesh(
             "cuda", mesh_shape=(dp_size, self.sequence_parallel_size), mesh_dim_names=("dp", "sp")
         )
@@ -99,13 +105,15 @@ class DistributedTorchRayActor:
             dp_size=self.device_mesh.size(0),
             pp_size=1,
         )
+        if self.sequence_parallel_size > 1:
+            sp_group = self.device_mesh["sp"].get_group()
+            set_ulysses_sequence_parallel_group(sp_group)
 
     def _seq_parallel_monkey_patch(self, model: PreTrainedModel, use_parent_class: bool = False):
         # NOTE (sumanthrh): This sets a global variable that is used during the forward pass for sequence parallelism
         # This works because each worker is it's own process and thus different worker types are isolated
         # TODO (sumanthrh): We should re-visit this and see if we should adopt a context-manager pattern for sequence parallelism
         if self.sequence_parallel_size > 1:
-            set_ulysses_sequence_parallel_group(self.device_mesh["sp"].get_group())
             apply_monkey_patch(
                 model=model, ulysses_sp_size=self.sequence_parallel_size, use_parent_class=use_parent_class
             )
