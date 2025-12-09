@@ -1,8 +1,8 @@
-from func_timeout import func_timeout, FunctionTimedOut
 from skyrl_gym.tools.core import tool, ToolGroup
 import pandas as pd
 import sqlite3
 import sys
+import concurrent.futures
 import os
 
 
@@ -13,24 +13,34 @@ class SQLCodeExecutorToolGroup(ToolGroup):
 
     @tool
     def sql(self, db_id, sql, turns_left, timeout=5) -> str:
-        def _execute_sql(db_file, sql):
+        def _execute_sql(db_file, conn: sqlite3.Connection, cursor: sqlite3.Cursor, sql: str) -> frozenset:
             try:
-                conn = sqlite3.connect(db_file)
-                cursor = conn.cursor()
                 conn.execute("BEGIN TRANSACTION;")
                 cursor.execute(sql)
                 execution_res = frozenset(cursor.fetchall())
                 conn.rollback()
-                conn.close()
                 return execution_res
             except Exception as e:
                 conn.rollback()
-                conn.close()
                 return f"Error executing SQL: {str(e)}, db file: {db_file}"
 
         def _execute_sql_wrapper(db_file, sql, timeout=5) -> str:
+            conn = None
             try:
-                res = func_timeout(timeout, _execute_sql, args=(db_file, sql))
+                conn = sqlite3.connect(db_file)
+                cursor = conn.cursor()
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_execute_sql, db_file, conn, cursor, sql)
+                    try:
+                        res = future.result(timeout=timeout)
+                    except concurrent.futures.TimeoutError:
+                        conn.rollback()
+                        return f"SQL Timeout:\n{sql}"
+                    except Exception as e:
+                        conn.rollback()
+                        conn.close()
+                        return f"Error executing SQL: {str(e)}, db file: {db_file}"
+
                 if isinstance(res, frozenset):
                     df = pd.DataFrame(res)
                     res = df.to_string(index=False)
@@ -46,10 +56,15 @@ class SQLCodeExecutorToolGroup(ToolGroup):
 
             except KeyboardInterrupt:
                 sys.exit(0)
-            except FunctionTimedOut:
-                res = f"SQL Timeout:\n{sql}"
             except Exception as e:
                 res = str(e)
+            finally:
+                # Always close the connection to ensure cleanup of temporary files
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass  # Ignore errors during cleanup
 
             return res
 
