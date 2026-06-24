@@ -70,6 +70,9 @@ class WorkerWrap:
                 return
 
         self._weight_receiver = strategy_cls.create_receiver(init_info)
+        # Let strategies that maintain reload-time state (e.g. the delta shard shadow) bind
+        # to this worker's model/model_runner. Default is a no-op.
+        self._weight_receiver.bind_worker(self)
 
     def load_weights(self, request: bytes) -> None:
         """
@@ -92,7 +95,13 @@ class WorkerWrap:
         for name, tensor in self._weight_receiver.receive_weights(request):
             weight_list.append((name, tensor))
 
-        with torch.device(self.device), set_current_vllm_config(self.vllm_config):
+        # `load_context` defaults to a no-op; receivers that need reload-time state may
+        # override it to wrap `reload_weights` with their own context manager.
+        with (
+            set_current_vllm_config(self.vllm_config),
+            torch.device(self.device),
+            self._weight_receiver.load_context(request),
+        ):
             self.model_runner.reload_weights(weights_iterator=iter(weight_list))
 
         for weight in weight_list:

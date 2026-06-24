@@ -5,6 +5,7 @@ from training workers to inference engines. The strategy pattern allows differen
 transfer mechanisms (broadcast, CUDA IPC) to be used interchangeably.
 """
 
+import contextlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, Optional, Tuple, Union
@@ -112,6 +113,24 @@ class WeightTransferReceiver(ABC):
     def teardown(self) -> None:
         """Clean up resources used by the receiver (e.g., destroy process groups)."""
         ...
+
+    def bind_worker(self, worker) -> None:
+        """Optionally bind the host vLLM worker to the receiver.
+
+        Strategies that need access to the worker's model/model_runner (e.g. the delta
+        receiver, which installs a reload-time shard shadow) override this. Default no-op so
+        other strategies are unaffected.
+        """
+        pass
+
+    def load_context(self, request: "WeightUpdateRequest"):
+        """Return a context manager active around ``reload_weights`` for this request.
+
+        Strategies that must patch the reload (e.g. the delta receiver's NaN-masked shard
+        shadow) override this. Default returns a no-op context so other strategies behave
+        exactly as before.
+        """
+        return contextlib.nullcontext()
 
 
 class WeightTransferStrategy(ABC):

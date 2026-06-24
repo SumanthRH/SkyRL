@@ -154,6 +154,8 @@ class BasePPOExp:
         self._prefill_server_groups = None
         self._decode_server_groups = None
         self._inference_router = None
+        # Held so the (non-detached) node-local lmcache servers live for the run.
+        self._lmcache_servers = None
 
     @staticmethod
     def get_cfg_as_str(cfg: SkyRLTrainConfig) -> str:
@@ -334,6 +336,7 @@ class BasePPOExp:
         self._server_groups = server_setup.server_groups
         self._prefill_server_groups = server_setup.prefill_server_groups
         self._decode_server_groups = server_setup.decode_server_groups
+        self._lmcache_servers = server_setup.lmcache_servers
 
         if is_colocated:
             # Callers must invoke get_inference_client() from a sync context (no running event loop).

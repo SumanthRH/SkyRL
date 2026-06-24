@@ -55,6 +55,135 @@ try:
 except ImportError:
     pass
 
+# Register the SkyRL sparse-bf16 delta engine with vLLM's weight-transfer factory. This
+# module is imported (via --worker-extension-cls) before model init, so the "delta" backend
+# is registered by the time vLLM's factory builds the engine from
+# WeightTransferConfig(backend="delta"). Guarded so a re-import or a vLLM build without the
+# factory does not raise.
+try:
+    from vllm.distributed.weight_transfer.factory import WeightTransferEngineFactory
+
+    if "delta" not in WeightTransferEngineFactory._registry:
+        WeightTransferEngineFactory.register_engine(
+            "delta",
+            "skyrl.backends.skyrl_train.weight_sync.delta_engine",
+            "DeltaWeightTransferEngine",
+        )
+except Exception:
+    pass
+
+
+# Capture the pre-quantization bf16 master at model load (delta backend only).
+#
+# A quantized inference model has no bf16 master after load: each weight is cast to
+# fp8/kernel format and bf16<-fp8 is lossy. Delta sync's shard shadow needs that bf16 master
+# to reconstruct the merge base locally, which is what lets the disk transport skip shipping
+# the initial full-weight "seed". The bf16 value of a weight exists for one instant per layer
+# -- right after its weight loaders run, right before its `process_weights_after_loading`
+# quantizes it -- so we snapshot it there.
+#
+# vLLM has two such bf16->kernel boundaries; we wrap both so the capture generalizes across
+# quant strategies without any per-quant-method knowledge:
+#
+#   (1) meta-device "online" quant (`quantization=fp8` etc.; `uses_meta_device=True`): each
+#       layer is materialized + loaded + quantized inside
+#       `reload.layerwise._layerwise_process`, *before* the model-level
+#       `process_weights_after_loading` runs. We wrap `_layerwise_process` and, on the initial
+#       load only, snapshot the layer's bf16 weights at the entry of its quant method's
+#       `process_weights_after_loading`.
+#   (2) non-meta "quantize in postprocess" (and plain bf16): weights stay bf16 in their real
+#       params until the model-level `base_loader.process_weights_after_loading`. We wrap that
+#       and snapshot model-wide before it casts.
+#
+# Both feed the same module-identity-keyed stash in `delta_utils`. Import-time (via
+# --worker-extension-cls) so the wraps are in place before the model loads; gated to the
+# delta backend so non-delta runs pay nothing.
+def _skyrl_delta_backend_active() -> bool:
+    """True iff the current vLLM config selects the delta weight-transfer backend."""
+    try:
+        from vllm.config import get_current_vllm_config
+
+        wt_cfg = get_current_vllm_config().weight_transfer_config
+        return wt_cfg is not None and getattr(wt_cfg, "backend", None) == "delta"
+    except Exception:
+        return False
+
+
+# Seam (2): non-meta quantize-in-postprocess + bf16, via the model-level call. We patch
+# `base_loader.process_weights_after_loading` (not the `utils` source): `DefaultModelLoader`
+# inherits `base_loader.load_model` and hits this binding. Loaders that override `load_model`
+# (gguf/tensorizer/modelexpress) hold their own bindings, but those are pre-quantized/
+# specialized formats with no transient bf16 master to capture -- intentionally out of scope.
+try:
+    from vllm.model_executor.model_loader import base_loader as _skyrl_base_loader
+
+    _skyrl_orig_process_weights = _skyrl_base_loader.process_weights_after_loading
+
+    def _skyrl_capturing_process_weights(model, *args, **kwargs):
+        try:
+            if _skyrl_delta_backend_active():
+                from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
+                    capture_model_prequant_bf16,
+                )
+
+                capture_model_prequant_bf16(model)
+        except Exception:
+            # Never let capture break model load; bf16/online-quant params are still covered
+            # by the live snapshot / seam (1), respectively.
+            pass
+        return _skyrl_orig_process_weights(model, *args, **kwargs)
+
+    _skyrl_base_loader.process_weights_after_loading = _skyrl_capturing_process_weights
+except Exception:
+    pass
+
+# Seam (1): meta-device online quant, via the per-layer `_layerwise_process`. The bf16 weights
+# live in the layer only between its weight loaders and its `quant_method
+# .process_weights_after_loading` (both inside `_layerwise_process`), so we intercept that one
+# call: on the initial load we temporarily wrap the layer's quant-method hook to snapshot the
+# bf16 weights first. Reloads (where `info.kernel_tensors` is set) are skipped -- the shadow's
+# own copy_ seam captures bf16 there.
+try:
+    from vllm.model_executor.layers.quantization.base_config import (
+        QuantizeMethodBase as _SkyrlQuantizeMethodBase,
+    )
+    from vllm.model_executor.model_loader.reload import layerwise as _skyrl_layerwise
+
+    _skyrl_orig_layerwise_process = _skyrl_layerwise._layerwise_process
+
+    def _skyrl_capturing_layerwise_process(layer, info):
+        is_initial_load = getattr(info, "kernel_tensors", None) is None
+        quant_method = getattr(layer, "quant_method", None)
+        if is_initial_load and isinstance(quant_method, _SkyrlQuantizeMethodBase) and _skyrl_delta_backend_active():
+            # Bound hook captured before the swap; calling it auto-passes `self`.
+            orig_pwal = quant_method.process_weights_after_loading
+
+            def _capture_then_process(captured_layer, *a, **k):
+                try:
+                    from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
+                        capture_layer_prequant_bf16,
+                    )
+
+                    capture_layer_prequant_bf16(captured_layer)
+                except Exception:
+                    pass
+                return orig_pwal(captured_layer, *a, **k)
+
+            # Instance attribute shadows the class method for this one process call.
+            quant_method.process_weights_after_loading = _capture_then_process
+            try:
+                return _skyrl_orig_layerwise_process(layer, info)
+            finally:
+                try:
+                    del quant_method.process_weights_after_loading
+                except Exception:
+                    quant_method.process_weights_after_loading = orig_pwal
+        return _skyrl_orig_layerwise_process(layer, info)
+
+    _skyrl_layerwise._layerwise_process = _skyrl_capturing_layerwise_process
+except Exception:
+    pass
+
 VLLM_NEW_INFERENCE_WORKER_EXTENSION_CLS = f"{__name__}.NewInferenceWorkerWrap"
 
 
@@ -74,7 +203,7 @@ class NewInferenceWorkerWrap:
         self.device
     """
 
-    def start_weight_update(self, is_checkpoint_format: bool = True) -> None:
+    def skyrl_start_weight_update(self, is_checkpoint_format: bool = True) -> None:
         """
         Prepare the model for a new weight update.
 
@@ -105,10 +234,20 @@ class NewInferenceWorkerWrap:
             with set_current_vllm_config(self.vllm_config), torch.device(self.device):
                 initialize_layerwise_reload(model)
 
+                # --- Delta shard-shadow integration point (new-inference path) ---
+                # For deltas, the materialize / NaN-masked copy_ / re-quant all happen in
+                # `finish_weight_update` (the layer never completes during the chunk updates),
+                # so the shadow hooks must be *installed here* and torn down at finish -- a
+                # stateful install/teardown, not a `with` around a single call (legacy path).
+                # The "delta" WeightTransferEngine owns the shadow; other engines no-op.
+                engine = getattr(self, "weight_transfer_engine", None)
+                if engine is not None and hasattr(engine, "begin_update"):
+                    engine.begin_update()
+
         self._skyrl_is_checkpoint_format = is_checkpoint_format
         self._skyrl_weight_update_active = True
 
-    def update_weights_ipc(self, update_info: dict) -> None:
+    def skyrl_update_weights_ipc(self, update_info: dict) -> None:
         """
         Receive and load a single chunk of weights.
 
@@ -178,7 +317,7 @@ class NewInferenceWorkerWrap:
         # before the sender drops its reference on the next barrier).
         torch.accelerator.synchronize()
 
-    def update_weights_nccl(self, update_info: dict) -> None:
+    def skyrl_update_weights_nccl(self, update_info: dict) -> None:
         """
         Receive a batched weight update via vLLM's NCCL weight transfer engine.
 
@@ -218,7 +357,7 @@ class NewInferenceWorkerWrap:
 
         torch.accelerator.synchronize()
 
-    def finish_weight_update(self) -> None:
+    def skyrl_finish_weight_update(self) -> None:
         """
         Finalize the current weight update.
 
@@ -238,6 +377,14 @@ class NewInferenceWorkerWrap:
             model = self.model_runner.model
             with set_current_vllm_config(self.vllm_config), torch.device(self.device):
                 finalize_layerwise_reload(model, self.model_config)
+
+                # --- Delta shard-shadow integration point (new-inference path) ---
+                # Mirror of the install in `start_weight_update`: tear the hooks down only after
+                # `finalize_layerwise_reload` has materialized + re-quantized the deferred (delta)
+                # layers, so the persist (D2H) hook fires before the patches lift.
+                engine = getattr(self, "weight_transfer_engine", None)
+                if engine is not None and hasattr(engine, "end_update"):
+                    engine.end_update()
 
         self._skyrl_weight_update_active = False
         self._skyrl_is_checkpoint_format = True

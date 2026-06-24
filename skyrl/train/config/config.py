@@ -474,6 +474,47 @@ class ChatTemplateConfig(BaseConfig):
 
 
 @dataclass
+class DeltaWeightSyncConfig(BaseConfig):
+    """Configuration for delta weight sync (``weight_sync_backend="delta"``).
+
+    Delta sync ships only the changed bf16 elements each sync. The diff/encode (trainer)
+    and NaN-narrow decode + shadow merge (inference) are transport-independent; only the
+    carrier of the sparse ``(positions, values)`` payload changes.
+    """
+
+    transport: str = "nccl"
+    """How the sparse delta payload is delivered each sync:
+    - ``"nccl"``: trainer rank 0 broadcasts over a PyNccl group (same-DC baseline).
+    - ``"disk"``: trainer rank 0 writes versioned safetensors files to ``sync_dir`` on a
+      shared filesystem; every inference worker reads the same file (cross-DC / low-bandwidth)."""
+    sync_dir: Optional[str] = None
+    """Shared-filesystem directory where the trainer writes / inference engines read delta
+    files. Required (and must be reachable by both sides) when ``transport="disk"``."""
+    keep_files: bool = False
+    """When ``transport="disk"``, keep each version's delta directory after the sync instead
+    of deleting the previous version. Useful for debugging at the cost of disk usage."""
+
+
+@dataclass
+class LMCacheServerConfig(BaseConfig):
+    """Per-node ``lmcache server`` settings for the ``LMCacheMPConnector``.
+
+    The MP connector does not start its own store; it connects to an external
+    ``lmcache server``. When ``engine_init_kwargs.kv_transfer_config.kv_connector ==
+    "LMCacheMPConnector"``, SkyRL launches one node-local ``lmcache server`` per engine
+    node with these settings. The ZMQ port is taken from the connector's own
+    ``kv_connector_extra_config["lmcache.mp.port"]`` (single source of truth, since the
+    workers must connect to the same port). Ignored for all other connectors."""
+
+    l1_size_gb: float = 0.0
+    """Per-node CPU KV-cache pool size (GiB). Must be > 0 when using LMCacheMPConnector."""
+    chunk_size: int = 256
+    """KV chunk size (tokens) for the store; should be a multiple of the vLLM block size."""
+    eviction_policy: str = "LRU"
+    """L1 eviction policy: ``"LRU"`` or ``"noop"``."""
+
+
+@dataclass
 class InferenceEngineConfig(BaseConfig):
     """Configuration for inference engine instantiation and management."""
 
@@ -484,6 +525,8 @@ class InferenceEngineConfig(BaseConfig):
     backend: str = "vllm"
     """``"vllm"``."""
     weight_sync_backend: str = "nccl"
+    delta_weight_sync_config: DeltaWeightSyncConfig = field(default_factory=DeltaWeightSyncConfig)
+    """Delta-specific settings; only used when ``weight_sync_backend="delta"``."""
     weight_transfer_threshold_cuda_ipc_GB: float = 1.0
     """When using ``cuda_ipc``, send weights in batches of this size (GB)."""
     tensor_parallel_size: int = 1
@@ -525,6 +568,8 @@ class InferenceEngineConfig(BaseConfig):
     multimodal models (e.g. Qwen3.5) skip vision encoder initialization."""
     engine_init_kwargs: Dict[str, Any] = field(default_factory=dict)
     """Pass-through kwargs for the vLLM engine. Names must match the engine's args."""
+    lmcache_server: LMCacheServerConfig = field(default_factory=LMCacheServerConfig)
+    """Per-node lmcache server settings; only used with the ``LMCacheMPConnector``."""
     override_existing_update_group: str = "auto"
     """``"auto"``, ``"enable"``, or ``"disable"``."""
     external_proxy_url: Optional[str] = None
@@ -540,6 +585,16 @@ class InferenceEngineConfig(BaseConfig):
     router_init_kwargs: Dict[str, Any] = field(default_factory=dict)
     """Pass-through kwargs applied to ``RouterArgs`` for the vllm-router.
     Names must match ``vllm_router.RouterArgs`` fields (e.g. ``policy``, ``request_timeout_secs``)."""
+
+    def __post_init__(self):
+        if self.weight_sync_backend == "delta":
+            transport = self.delta_weight_sync_config.transport
+            if transport not in ("nccl", "disk"):
+                raise ValueError(f"delta_weight_sync_config.transport must be 'nccl' or 'disk', got {transport!r}.")
+            if transport == "disk" and not self.delta_weight_sync_config.sync_dir:
+                raise ValueError(
+                    "delta_weight_sync_config.sync_dir is required when " "delta_weight_sync_config.transport='disk'."
+                )
 
 
 # ---------------------------------------------------------------------------

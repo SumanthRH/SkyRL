@@ -138,6 +138,7 @@ class SkyRLTrainBackend(AbstractBackend):
         # New inference infrastructure
         self._server_groups: list = []
         self._inference_router = None
+        self._lmcache_servers: list = []
 
         # Optional hook invoked on inference-engine state changes (after
         # _create_new_inference_client, on delete_model teardown). The host
@@ -371,6 +372,7 @@ class SkyRLTrainBackend(AbstractBackend):
         )
         self._inference_router = server_setup.router
         self._server_groups = server_setup.server_groups
+        self._lmcache_servers = server_setup.lmcache_servers
         self._inference_engine_client = client
 
         # Publish inference endpoint so the API can forward samples directly
@@ -519,6 +521,13 @@ class SkyRLTrainBackend(AbstractBackend):
         for group in self._server_groups:
             group.shutdown()
         self._server_groups = []
+        if self._lmcache_servers:
+            from skyrl.backends.skyrl_train.inference_servers.lmcache_mp_bootstrap import (
+                stop_lmcache_servers,
+            )
+
+            stop_lmcache_servers(self._lmcache_servers)
+            self._lmcache_servers = []
         if self._inference_router:
             self._inference_router.shutdown()
             self._inference_router = None

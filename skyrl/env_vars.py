@@ -110,6 +110,26 @@ Set `_SKYRL_USE_NEW_INFERENCE=0` to disable the new inference layer.
 This flag will be removed soon - the legacy path will be removed
 """
 
+_SKYRL_DELTA_SHADOW = str(os.environ.get("_SKYRL_DELTA_SHADOW", "0")).lower() in (
+    "true",
+    "1",
+    "yes",
+)
+"""
+**Private feature flag** - Enables the delta-weight-sync shard shadow on the
+*new* inference path (``NewInferenceWorkerWrap``).
+
+When enabled, ``start_weight_update`` installs a per-worker pinned-CPU bf16
+``ShardShadow`` (NaN-masked delta load + re-quant from the shadow) and
+``finish_weight_update`` tears it down. Inert (default off) so the existing
+IPC / NCCL weight-transfer paths are completely unaffected.
+
+NOTE: v1 wiring is partial -- the new-inference path drives weight transfer via
+vLLM's native ``weight_transfer_engine``, and full delta plumbing there (sparse
+payload assembly, seed vs delta tagging) is not yet implemented. See the
+integration point in ``new_inference_worker_wrap.py``.
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging
 # ─────────────────────────────────────────────────────────────────────────────

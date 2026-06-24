@@ -15,6 +15,7 @@ from skyrl.train.utils.utils import (
 )
 
 from .common import SERVER_PORT_STRIDE
+from .lmcache_mp_bootstrap import maybe_bootstrap_lmcache_mp
 from .remote_inference_client import RemoteInferenceClient
 from .server_group import ServerGroup
 from .utils import (
@@ -45,6 +46,10 @@ class InferenceServerSetup:
     server_groups: List[ServerGroup] = field(default_factory=list)
     prefill_server_groups: List[ServerGroup] = field(default_factory=list)
     decode_server_groups: List[ServerGroup] = field(default_factory=list)
+    # Node-local lmcache servers started for the LMCacheMPConnector (empty for
+    # any other connector). Held for the run's lifetime; stop on teardown via
+    # ``stop_lmcache_servers``.
+    lmcache_servers: List = field(default_factory=list)
 
 
 def create_inference_servers(
@@ -178,6 +183,11 @@ def create_inference_servers(
             get_ray_pg_ready_with_timeout(raw_pg, timeout=SKYRL_RAY_PG_TIMEOUT_IN_S)
             placement_group = ResolvedPlacementGroup(raw_pg)
 
+        # If the engines use the LMCacheMPConnector, start one node-local
+        # ``lmcache server`` per engine node before the engines come up (they
+        # connect to it at init). No-op for any other connector.
+        lmcache_servers = maybe_bootstrap_lmcache_mp(cli_args, placement_group, ie_cfg)
+
         server_groups = [
             ServerGroup(
                 cli_args=cli_args,
@@ -212,6 +222,7 @@ def create_inference_servers(
             proxy_url=proxy_url,
             server_urls=server_urls,
             server_groups=server_groups,
+            lmcache_servers=lmcache_servers,
         )
 
 

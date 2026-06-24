@@ -203,17 +203,19 @@ class FSDPPolicyWorkerBase(PolicyWorkerBase):
         await super().init_weight_sync_state(inference_engine_client, inference_engine_cfg)
 
         # Initialize weight extractor
-        # TODO(haochen): Now module grouping (in order to support FlashRL) is only enabled for the CUDA IPC
-        # transfer strategy, we can enable it for other strategies as well.
-        from skyrl.backends.skyrl_train.weight_sync import CudaIpcTransferStrategy
+        # Module grouping was originally added for FlashRL QKV fusion under CUDA IPC.
+        from skyrl.backends.skyrl_train.weight_sync import (
+            CudaIpcTransferStrategy,
+        )
 
-        group_by_module = self._transfer_strategy_cls is CudaIpcTransferStrategy
+        is_cuda_ipc = self._transfer_strategy_cls is CudaIpcTransferStrategy
+        group_by_module = is_cuda_ipc
         weight_prefix = "language_model." if self._is_multimodal_lm_only else ""
         self.weight_extractor = FSDPWeightExtractor(
             self.model.model,
             group_by_module=group_by_module,
             batch_size_threshold_gb=(
-                inference_engine_cfg.weight_transfer_threshold_cuda_ipc_GB if group_by_module else 0.0
+                inference_engine_cfg.weight_transfer_threshold_cuda_ipc_GB if is_cuda_ipc else 0.0
             ),
             weight_prefix=weight_prefix,
         )
