@@ -15,7 +15,7 @@ from skyrl.train.utils.utils import (
 )
 
 from .common import SERVER_PORT_STRIDE
-from .lmcache_mp_bootstrap import maybe_bootstrap_lmcache_mp
+# from .lmcache_mp_bootstrap import maybe_bootstrap_lmcache_mp
 from .remote_inference_client import RemoteInferenceClient
 from .server_group import ServerGroup
 from .utils import (
@@ -183,10 +183,10 @@ def create_inference_servers(
             get_ray_pg_ready_with_timeout(raw_pg, timeout=SKYRL_RAY_PG_TIMEOUT_IN_S)
             placement_group = ResolvedPlacementGroup(raw_pg)
 
-        # If the engines use the LMCacheMPConnector, start one node-local
-        # ``lmcache server`` per engine node before the engines come up (they
-        # connect to it at init). No-op for any other connector.
-        lmcache_servers = maybe_bootstrap_lmcache_mp(cli_args, placement_group, ie_cfg)
+        # # If the engines use the LMCacheMPConnector, start one node-local
+        # # ``lmcache server`` per engine node before the engines come up (they
+        # # connect to it at init). No-op for any other connector.
+        # lmcache_servers = maybe_bootstrap_lmcache_mp(cli_args, placement_group, ie_cfg)
 
         server_groups = [
             ServerGroup(
@@ -222,7 +222,7 @@ def create_inference_servers(
             proxy_url=proxy_url,
             server_urls=server_urls,
             server_groups=server_groups,
-            lmcache_servers=lmcache_servers,
+            # lmcache_servers=lmcache_servers,
         )
 
 

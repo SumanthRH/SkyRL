@@ -12,7 +12,6 @@ set -x
 : "${LOGGER:=wandb}"
 : "${INFERENCE_BACKEND:=vllm}"
 : "${SYNC_DIR:="/tmp/skyrl-delta-sync-fp8"}"
-: "${KEEP_FILES:=false}"
 
 mkdir -p "$SYNC_DIR"
 
@@ -52,7 +51,6 @@ uv run --isolated --extra fsdp --env-file .env.ray -m skyrl.train.entrypoints.ma
   generator.inference_engine.weight_sync_backend=delta \
   generator.inference_engine.delta_weight_sync_config.transport=disk \
   generator.inference_engine.delta_weight_sync_config.sync_dir="$SYNC_DIR" \
-  generator.inference_engine.delta_weight_sync_config.keep_files=$KEEP_FILES \
   generator.inference_engine.engine_init_kwargs.quantization=fp8 \
   generator.inference_engine.async_engine=true \
   generator.batched=true \

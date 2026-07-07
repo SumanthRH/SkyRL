@@ -488,11 +488,18 @@ class DeltaWeightSyncConfig(BaseConfig):
     - ``"disk"``: trainer rank 0 writes versioned safetensors files to ``sync_dir`` on a
       shared filesystem; every inference worker reads the same file (cross-DC / low-bandwidth)."""
     sync_dir: Optional[str] = None
-    """Shared-filesystem directory where the trainer writes / inference engines read delta
-    files. Required (and must be reachable by both sides) when ``transport="disk"``."""
-    keep_files: bool = False
-    """When ``transport="disk"``, keep each version's delta directory after the sync instead
-    of deleting the previous version. Useful for debugging at the cost of disk usage."""
+    """Directory where the trainer writes / inference engines read delta files when
+    ``transport="disk"``. May be a local/shared-FS path or a cloud URI (``s3://``, ``gs://``,
+    ...); all I/O goes through fsspec. Must be reachable by both sides. Writes are append-only
+    (one ``weight_v{version}`` dir per sync, nothing deleted), so use a fresh prefix per run."""
+    max_file_size_in_gb: float = 1.0
+    """Maximum batched delta file size, in GiB, for ``transport="disk"``. Trainer rank 0 batches
+    chunk payloads into one safetensors file until adding another chunk would exceed this size.
+    A single chunk larger than the limit is written as its own file."""
+    max_files_to_keep: Optional[int] = None
+    """Optional per-sync retention limit for disk delta files. When set, the sender removes the
+    oldest file indices in the active ``weight_v{version}`` directory in a background thread as
+    newer files are uploaded. ``None`` preserves all files."""
 
 
 @dataclass
@@ -595,6 +602,14 @@ class InferenceEngineConfig(BaseConfig):
                 raise ValueError(
                     "delta_weight_sync_config.sync_dir is required when " "delta_weight_sync_config.transport='disk'."
                 )
+            if transport == "disk" and self.delta_weight_sync_config.max_file_size_in_gb <= 0:
+                raise ValueError("delta_weight_sync_config.max_file_size_in_gb must be > 0 for disk transport.")
+            if (
+                transport == "disk"
+                and self.delta_weight_sync_config.max_files_to_keep is not None
+                and self.delta_weight_sync_config.max_files_to_keep < 1
+            ):
+                raise ValueError("delta_weight_sync_config.max_files_to_keep must be >= 1 when set.")
 
 
 # ---------------------------------------------------------------------------

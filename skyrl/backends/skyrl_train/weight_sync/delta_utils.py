@@ -219,13 +219,13 @@ def build_delta_manifest(
     is_seed: bool,
     checksum: int,
     version: int = 0,
-    chunk_index: int = 0,
+    file_index: int = 0,
 ) -> Dict[str, Any]:
-    """Assemble the flat control-plane manifest dict for one delta chunk.
+    """Assemble the flat control-plane manifest dict for one delta file.
 
     The dict crosses the (reliable) RPC unchanged for every transport; the bulk
     ``(positions, values)`` payload is carried separately by the transport. ``version`` /
-    ``chunk_index`` route a disk read to the right file and are ignored by NCCL.
+    ``file_index`` route a disk read to the right file and are ignored by NCCL.
     """
     return {
         "names": list(names),
@@ -235,7 +235,7 @@ def build_delta_manifest(
         "is_seed": is_seed,
         "checksum": int(checksum),
         "version": int(version),
-        "chunk_index": int(chunk_index),
+        "file_index": int(file_index),
     }
 
 

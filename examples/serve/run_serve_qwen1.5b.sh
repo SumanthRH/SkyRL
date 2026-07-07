@@ -22,7 +22,9 @@ set -x
 : "${TP_SIZE:=1}"
 : "${INFERENCE_BACKEND:=vllm}"
 
-uv run --isolated --extra fsdp -m skyrl.train.entrypoints.serve \
+SYNC_DIR=gs://sumanth-anyscale-test-bucket/skyrl-delta-disagg
+
+uv run --isolated --extra fsdp --with gcsfs -m skyrl.train.entrypoints.serve \
   trainer.policy.model.path="$MODEL" \
   trainer.placement.colocate_all=false \
   generator.inference_engine.backend=$INFERENCE_BACKEND \
@@ -31,4 +33,7 @@ uv run --isolated --extra fsdp -m skyrl.train.entrypoints.serve \
   generator.inference_engine.tensor_parallel_size=$TP_SIZE \
   generator.inference_engine.gpu_memory_utilization=0.8 \
   trainer.log_path="/tmp/skyrl-serve-logs" \
+  generator.inference_engine.weight_sync_backend=delta \
+  generator.inference_engine.delta_weight_sync_config.transport=disk \
+  generator.inference_engine.delta_weight_sync_config.sync_dir="$SYNC_DIR" \
   "$@"

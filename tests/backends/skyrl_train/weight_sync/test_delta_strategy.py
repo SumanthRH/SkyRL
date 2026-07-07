@@ -448,3 +448,61 @@ def test_engine_update_info_validation():
     assert info.names == ["a"]
     assert info.counts == [2]
     assert info.is_seed is True
+
+
+class _FakeInferenceClient:
+    def __init__(self):
+        self.updates = []
+
+    async def update_weights_nccl(self, update_info):
+        self.updates.append(update_info)
+
+
+class _FakeDeltaTransport:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, payload, *, version, file_index):
+        self.sent.append((version, file_index, payload))
+
+
+@pytest.mark.asyncio
+async def test_disk_sender_batches_chunks_by_max_file_size(monkeypatch):
+    from skyrl.backends.skyrl_train.weight_sync.base import WeightChunk
+    from skyrl.backends.skyrl_train.weight_sync.delta_strategy import (
+        DeltaInitInfo,
+        DeltaWeightTransferSender,
+    )
+
+    monkeypatch.setattr(torch.distributed, "barrier", lambda: None)
+    client = _FakeInferenceClient()
+    transport = _FakeDeltaTransport()
+    sender = DeltaWeightTransferSender(
+        DeltaInitInfo(
+            override_existing_receiver=False,
+            master_addr="127.0.0.1",
+            master_port=1234,
+            rank_offset=1,
+            world_size=2,
+            group_name="test",
+            backend="nccl",
+            model_dtype_str="bfloat16",
+            transport="disk",
+            sync_dir="/tmp/delta",
+            max_file_size_in_gb=8 / (2**30),
+        ),
+        client,
+        transport,
+    )
+    sender._version = 0
+
+    chunks = [
+        WeightChunk(names=[name], dtypes=["bfloat16"], shapes=[[2]], tensors=[torch.ones(2, dtype=torch.bfloat16)])
+        for name in ("a.weight", "b.weight", "c.weight")
+    ]
+    await sender._send_chunks_disk(chunks, rank=0)
+
+    assert [update["file_index"] for update in client.updates] == [0, 1]
+    assert [update["names"] for update in client.updates] == [["a.weight", "b.weight"], ["c.weight"]]
+    assert [(version, file_index) for version, file_index, _ in transport.sent] == [(0, 0), (0, 1)]
+    assert [payload.values.numel() for _, _, payload in transport.sent] == [4, 2]

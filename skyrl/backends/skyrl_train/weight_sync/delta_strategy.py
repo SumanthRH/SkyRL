@@ -55,6 +55,7 @@ from skyrl.backends.skyrl_train.weight_sync.delta_transport import (
     NcclDeltaTransport,
 )
 from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
+    POSITION_DTYPE,
     SnapshotDiffer,
     build_delta_manifest,
     delta_checksum,
@@ -99,6 +100,65 @@ def _format_delta_size(
     )
 
 
+def _payload_wire_bytes(payload: DeltaPayload) -> int:
+    bytes_ = payload.values.numel() * payload.values.element_size()
+    if not payload.is_seed and payload.positions is not None:
+        bytes_ += payload.positions.numel() * payload.positions.element_size()
+    return bytes_
+
+
+@dataclass
+class _PreparedDeltaChunk:
+    names: List[str]
+    shapes: List[List[int]]
+    counts: List[int]
+    is_seed: bool
+    payload: DeltaPayload
+    wire_bytes: int
+
+
+@dataclass
+class _PendingDeltaFile:
+    is_seed: bool
+    names: List[str]
+    dtype_names: List[str]
+    shapes: List[List[int]]
+    counts: List[int]
+    values: List[torch.Tensor]
+    positions: List[torch.Tensor]
+    wire_bytes: int = 0
+
+    @classmethod
+    def empty(cls, *, is_seed: bool) -> "_PendingDeltaFile":
+        return cls(is_seed=is_seed, names=[], dtype_names=[], shapes=[], counts=[], values=[], positions=[])
+
+    def add(self, prepared: _PreparedDeltaChunk, dtype_str: str) -> None:
+        if prepared.is_seed != self.is_seed:
+            raise ValueError("Cannot mix seed and sparse delta payloads in one delta file")
+        self.names.extend(prepared.names)
+        self.dtype_names.extend([dtype_str] * len(prepared.names))
+        self.shapes.extend(prepared.shapes)
+        self.counts.extend(prepared.counts)
+        self.values.append(prepared.payload.values)
+        if not self.is_seed:
+            assert prepared.payload.positions is not None
+            self.positions.append(prepared.payload.positions)
+        self.wire_bytes += prepared.wire_bytes
+
+    def to_payload(self) -> DeltaPayload:
+        if self.values:
+            values = torch.cat([v.detach().to(torch.bfloat16).reshape(-1) for v in self.values])
+        else:
+            values = torch.empty(0, dtype=torch.bfloat16)
+        if self.is_seed:
+            return DeltaPayload(values=values, positions=None)
+        if self.positions:
+            positions = torch.cat([p.detach().to(POSITION_DTYPE).reshape(-1) for p in self.positions])
+        else:
+            positions = torch.empty(0, dtype=POSITION_DTYPE)
+        return DeltaPayload(values=values, positions=positions)
+
+
 @dataclass
 class DeltaInitInfo(WeightSyncInitInfo):
     """Initialization info for delta weight transfer.
@@ -118,9 +178,12 @@ class DeltaInitInfo(WeightSyncInitInfo):
     transport: str = "nccl"
     """Payload carrier: ``"nccl"`` (broadcast) or ``"disk"`` (shared-FS safetensors)."""
     sync_dir: Optional[str] = None
-    """Shared-FS directory for ``transport="disk"`` (required for disk; ignored for NCCL)."""
-    keep_files: bool = False
-    """Keep each version's delta files after the sync (``transport="disk"`` only)."""
+    """Local/shared-FS path or cloud URI (``s3://``/``gs://``) for ``transport="disk"`` (required
+    for disk; ignored for NCCL)."""
+    max_file_size_in_gb: float = 1.0
+    """Maximum batched delta file size in GiB for ``transport="disk"``."""
+    max_files_to_keep: Optional[int] = None
+    """Optional per-sync retention limit for disk delta files."""
 
     @staticmethod
     def strategy_type() -> type:
@@ -151,8 +214,8 @@ class DeltaInitInfo(WeightSyncInitInfo):
         """JSON payload for the ``/init_weight_transfer_engine`` endpoint (new path).
 
         Maps to ``DeltaWeightTransferInitInfo`` fields; ``model_dtype_name`` tells the engine
-        the (bf16) transfer dtype and ``transport``/``sync_dir``/``keep_files`` select the
-        payload carrier the engine builds in ``init_transfer_engine``.
+        the (bf16) transfer dtype and ``transport``/``sync_dir`` select the payload carrier the
+        engine builds in ``init_transfer_engine``.
         """
         return {
             "master_address": self.master_addr,
@@ -162,7 +225,6 @@ class DeltaInitInfo(WeightSyncInitInfo):
             "model_dtype_name": self.model_dtype_str,
             "transport": self.transport,
             "sync_dir": self.sync_dir or "",
-            "keep_files": self.keep_files,
         }
 
 
@@ -234,12 +296,15 @@ class DeltaWeightTransferSender(WeightTransferSender):
             await self._inference_client.start_weight_update(is_checkpoint_format=True)
             self._transport.begin_sync(self._version)
 
-        chunk_index = 0
-        for chunk in chunks:
-            if rank == 0:
-                await self._send_one_chunk_native(chunk, self._version, chunk_index)
-                chunk_index += 1
-            torch.distributed.barrier()
+        if self._init_info.transport == "disk":
+            await self._send_chunks_disk(chunks, rank)
+        else:
+            file_index = 0
+            for chunk in chunks:
+                if rank == 0:
+                    await self._send_one_chunk_native(chunk, self._version, file_index)
+                    file_index += 1
+                torch.distributed.barrier()
 
         if rank == 0:
             await self._inference_client.finish_weight_update()
@@ -247,9 +312,7 @@ class DeltaWeightTransferSender(WeightTransferSender):
         torch.distributed.barrier()
         self._snapshot_seeded = True
 
-    async def _send_one_chunk_native(self, chunk: WeightChunk, version: int, chunk_index: int) -> None:
-        dtype_str = self._init_info.model_dtype_str
-
+    def _prepare_delta_chunk(self, chunk: WeightChunk) -> _PreparedDeltaChunk:
         # Seed the whole chunk if any parameter hasn't been sent before; otherwise delta.
         is_seed = not all(self._differ.has(n) for n in chunk.names)
 
@@ -266,29 +329,103 @@ class DeltaWeightTransferSender(WeightTransferSender):
 
         logger.info(_format_delta_size(is_seed, counts, chunk.shapes, packed_values, packed_positions))
 
-        checksum = delta_checksum(None if is_seed else packed_positions, packed_values)
-        update_info = build_delta_manifest(
+        payload = DeltaPayload(values=packed_values, positions=None if is_seed else packed_positions)
+        return _PreparedDeltaChunk(
             names=list(chunk.names),
-            dtype_names=[dtype_str] * len(chunk),
             shapes=[list(s) for s in chunk.shapes],
             counts=counts,
             is_seed=is_seed,
+            payload=payload,
+            wire_bytes=_payload_wire_bytes(payload),
+        )
+
+    async def _send_chunks_disk(self, chunks: Iterable[WeightChunk], rank: int) -> None:
+        dtype_str = self._init_info.model_dtype_str
+        max_file_bytes = max(1, int(self._init_info.max_file_size_in_gb * (2**30)))
+        pending: _PendingDeltaFile | None = None
+        file_index = 0
+
+        async def flush_pending() -> None:
+            nonlocal pending, file_index
+            if pending is None:
+                return
+            if pending.wire_bytes == 0:
+                pending = None
+                return
+            payload = pending.to_payload()
+            checksum = delta_checksum(None if pending.is_seed else payload.positions, payload.values)
+            update_info = build_delta_manifest(
+                names=pending.names,
+                dtype_names=pending.dtype_names,
+                shapes=pending.shapes,
+                counts=pending.counts,
+                is_seed=pending.is_seed,
+                checksum=checksum,
+                version=self._version,
+                file_index=file_index,
+            )
+            logger.info(
+                "delta file: version={} file_index={} params={} size={:.2f} MiB",
+                self._version,
+                file_index,
+                len(pending.names),
+                pending.wire_bytes / 2**20,
+            )
+            assert self._transport is not None
+            await asyncio.to_thread(self._transport.send, payload, version=self._version, file_index=file_index)
+            await self._inference_client.update_weights_nccl(update_info)
+            file_index += 1
+            pending = None
+
+        for chunk in chunks:
+            if rank == 0:
+                prepared = self._prepare_delta_chunk(chunk)
+                if pending is not None and pending.is_seed != prepared.is_seed:
+                    await flush_pending()
+                if (
+                    pending is not None
+                    and pending.wire_bytes > 0
+                    and prepared.wire_bytes > 0
+                    and pending.wire_bytes + prepared.wire_bytes > max_file_bytes
+                ):
+                    await flush_pending()
+                if pending is None:
+                    pending = _PendingDeltaFile.empty(is_seed=prepared.is_seed)
+                pending.add(prepared, dtype_str)
+                if pending.wire_bytes >= max_file_bytes:
+                    await flush_pending()
+            torch.distributed.barrier()
+
+        if rank == 0:
+            await flush_pending()
+
+    async def _send_one_chunk_native(self, chunk: WeightChunk, version: int, file_index: int) -> None:
+        dtype_str = self._init_info.model_dtype_str
+        prepared = self._prepare_delta_chunk(chunk)
+        payload = prepared.payload
+        checksum = delta_checksum(None if prepared.is_seed else payload.positions, payload.values)
+        update_info = build_delta_manifest(
+            names=prepared.names,
+            dtype_names=[dtype_str] * len(prepared.names),
+            shapes=prepared.shapes,
+            counts=prepared.counts,
+            is_seed=prepared.is_seed,
             checksum=checksum,
             version=version,
-            chunk_index=chunk_index,
+            file_index=file_index,
         )
-        payload = DeltaPayload(values=packed_values, positions=None if is_seed else packed_positions)
 
+        assert self._transport is not None
         if self._transport.sends_during_rpc:
             # NCCL: the rank-0 broadcast rendezvous with each worker's receive *inside* the
             # apply RPC, so launch the RPC first, then broadcast concurrently.
             update_task = asyncio.create_task(self._inference_client.update_weights_nccl(update_info))
-            await asyncio.to_thread(self._transport.send, payload, version=version, chunk_index=chunk_index)
+            await asyncio.to_thread(self._transport.send, payload, version=version, file_index=file_index)
             await update_task
         else:
             # Disk: the file must be durable before the worker reads it during the apply RPC,
             # so write+fsync first, then issue the RPC.
-            await asyncio.to_thread(self._transport.send, payload, version=version, chunk_index=chunk_index)
+            await asyncio.to_thread(self._transport.send, payload, version=version, file_index=file_index)
             await self._inference_client.update_weights_nccl(update_info)
 
     def teardown(self) -> None:
@@ -331,7 +468,8 @@ class DeltaTransferStrategy(WeightTransferStrategy):
             model_dtype_str=ie_cfg.model_dtype,
             transport=delta_cfg.transport,
             sync_dir=delta_cfg.sync_dir,
-            keep_files=delta_cfg.keep_files,
+            max_file_size_in_gb=delta_cfg.max_file_size_in_gb,
+            max_files_to_keep=delta_cfg.max_files_to_keep,
             override_existing_receiver=ie_cfg.override_existing_update_group == "enable",
         )
 
@@ -356,7 +494,7 @@ class DeltaTransferStrategy(WeightTransferStrategy):
         if init_info.transport == "disk":
             if not init_info.sync_dir:
                 raise ValueError("delta transport='disk' requires delta_weight_sync_config.sync_dir")
-            return DiskDeltaTransport(init_info.sync_dir, init_info.keep_files)
+            return DiskDeltaTransport(init_info.sync_dir, max_files_to_keep=init_info.max_files_to_keep)
         raise ValueError(f"Unsupported delta transport {init_info.transport!r}; expected 'nccl' or 'disk'.")
 
     @staticmethod

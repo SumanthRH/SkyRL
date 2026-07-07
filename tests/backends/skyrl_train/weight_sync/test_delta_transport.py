@@ -4,8 +4,8 @@ These exercise the transport-agnostic pieces added for disk-based delta sync, al
 on CPU without vLLM, NCCL, or a distributed env:
 
 * :func:`delta_checksum` / :func:`verify_delta_checksum` -- the CRC32 integrity guard;
-* :func:`build_delta_manifest` / :func:`iter_delta_params` -- the unified per-chunk manifest;
-* :class:`DiskDeltaTransport` -- safetensors round-trip, versioned layout, and cleanup;
+* :func:`build_delta_manifest` / :func:`iter_delta_params` -- the unified per-file manifest;
+* :class:`DiskDeltaTransport` -- safetensors round-trip, versioned layout, retention cleanup;
 * :class:`NcclDeltaTransport` -- the ``total == 0`` short-circuit (no broadcast) and the
   non-empty broadcast path against a fake group (CPU-only; the real GPU collective path is
   covered by the GPU weight-sync tests).
@@ -74,14 +74,14 @@ def test_build_manifest_and_iter_params():
         is_seed=False,
         checksum=1234,
         version=7,
-        chunk_index=3,
+        file_index=3,
     )
     assert manifest["names"] == ["a.weight", "b.weight"]
     assert manifest["counts"] == [2, 0]
     assert manifest["is_seed"] is False
     assert manifest["checksum"] == 1234
     assert manifest["version"] == 7
-    assert manifest["chunk_index"] == 3
+    assert manifest["file_index"] == 3
 
     params = list(iter_delta_params(manifest["names"], manifest["dtype_names"], manifest["shapes"], manifest["counts"]))
     assert [p.name for p in params] == ["a.weight", "b.weight"]
@@ -111,9 +111,9 @@ def test_disk_transport_seed_roundtrip(tmp_path):
     values = torch.randn(12, dtype=torch.bfloat16)
 
     transport.begin_sync(0)
-    transport.send(_payload_seed(values), version=0, chunk_index=0)
+    transport.send(_payload_seed(values), version=0, file_index=0)
 
-    values_cpu, positions_cpu = transport.receive(total=12, is_seed=True, version=0, chunk_index=0)
+    values_cpu, positions_cpu = transport.receive(total=12, is_seed=True, version=0, file_index=0)
     assert positions_cpu is None
     assert torch.equal(values_cpu, values)
 
@@ -126,9 +126,9 @@ def test_disk_transport_delta_roundtrip_with_checksum(tmp_path):
     crc = delta_checksum(positions, values)
 
     transport.begin_sync(1)
-    transport.send(_payload_delta(positions, values), version=1, chunk_index=2)
+    transport.send(_payload_delta(positions, values), version=1, file_index=2)
 
-    values_cpu, positions_cpu = transport.receive(total=3, is_seed=False, version=1, chunk_index=2)
+    values_cpu, positions_cpu = transport.receive(total=3, is_seed=False, version=1, file_index=2)
     assert torch.equal(positions_cpu, positions)
     assert torch.equal(values_cpu, values)
     # End-to-end integrity: the bytes that landed on disk verify against the sender's CRC.
@@ -144,45 +144,44 @@ def test_disk_transport_empty_chunk_writes_no_file(tmp_path):
         values=torch.empty(0, dtype=torch.bfloat16),
         positions=torch.empty(0, dtype=POSITION_DTYPE),
     )
-    transport.send(empty_payload, version=0, chunk_index=0)
-    assert not (tmp_path / "weight_v000000" / "chunk_00000.safetensors").exists()
+    transport.send(empty_payload, version=0, file_index=0)
+    assert not (tmp_path / "weight_v000000" / "file_00000.safetensors").exists()
 
-    values_cpu, positions_cpu = transport.receive(total=0, is_seed=False, version=0, chunk_index=0)
+    values_cpu, positions_cpu = transport.receive(total=0, is_seed=False, version=0, file_index=0)
     assert values_cpu.numel() == 0
     assert positions_cpu is not None and positions_cpu.numel() == 0
 
 
-def test_disk_transport_cleanup_drops_previous_version(tmp_path):
+def test_disk_transport_is_append_only(tmp_path):
+    """Without a retention limit, each sync writes a fresh dir and leaves prior files alone."""
     pytest.importorskip("safetensors")
-    transport = DiskDeltaTransport(str(tmp_path), keep_files=False)
-    values = torch.randn(4, dtype=torch.bfloat16)
-
-    # Sync 0.
-    transport.begin_sync(0)
-    transport.send(_payload_seed(values), version=0, chunk_index=0)
-    transport.end_sync(0)  # no previous version to drop
-    assert (tmp_path / "weight_v000000").is_dir()
-
-    # Sync 1: end_sync(1) drops version 0, keeps version 1.
-    transport.begin_sync(1)
-    transport.send(_payload_seed(values), version=1, chunk_index=0)
-    transport.end_sync(1)
-    assert not (tmp_path / "weight_v000000").exists()
-    assert (tmp_path / "weight_v000001").is_dir()
-
-
-def test_disk_transport_keep_files_retains_all_versions(tmp_path):
-    pytest.importorskip("safetensors")
-    transport = DiskDeltaTransport(str(tmp_path), keep_files=True)
+    transport = DiskDeltaTransport(str(tmp_path))
     values = torch.randn(4, dtype=torch.bfloat16)
 
     for v in range(3):
         transport.begin_sync(v)
-        transport.send(_payload_seed(values), version=v, chunk_index=0)
-        transport.end_sync(v)
+        transport.send(_payload_seed(values), version=v, file_index=0)
+        transport.end_sync(v)  # inherited base no-op; kept for the lifecycle contract
 
+    # All three versions remain on disk when file retention is disabled.
     for v in range(3):
         assert (tmp_path / f"weight_v{v:06d}").is_dir()
+
+
+def test_disk_transport_cleanup_keeps_recent_files(tmp_path):
+    pytest.importorskip("safetensors")
+    transport = DiskDeltaTransport(str(tmp_path), max_files_to_keep=1)
+    values = torch.randn(4, dtype=torch.bfloat16)
+
+    transport.begin_sync(0)
+    for file_index in range(3):
+        transport.send(_payload_seed(values + file_index), version=0, file_index=file_index)
+    transport.end_sync(0)
+
+    version_dir = tmp_path / "weight_v000000"
+    assert not (version_dir / "file_00000.safetensors").exists()
+    assert not (version_dir / "file_00001.safetensors").exists()
+    assert (version_dir / "file_00002.safetensors").exists()
 
 
 # --- nccl transport (fake group, CPU) --------------------------------------------------
@@ -205,7 +204,7 @@ def test_nccl_transport_empty_send_skips_broadcast():
         values=torch.empty(0, dtype=torch.bfloat16),
         positions=torch.empty(0, dtype=POSITION_DTYPE),
     )
-    transport.send(empty, version=0, chunk_index=0)
+    transport.send(empty, version=0, file_index=0)
     assert group.broadcasts == []
 
 
@@ -214,11 +213,11 @@ def test_nccl_transport_total_zero_receive_skips_broadcast():
     transport = NcclDeltaTransport(group, torch.device("cpu"))
 
     # Seed: nothing changed -> no broadcast, empty values, no positions.
-    values_cpu, positions_cpu = transport.receive(total=0, is_seed=True, version=0, chunk_index=0)
+    values_cpu, positions_cpu = transport.receive(total=0, is_seed=True, version=0, file_index=0)
     assert values_cpu.numel() == 0 and positions_cpu is None
 
     # Delta: nothing changed -> no broadcast, empty values + empty positions.
-    values_cpu, positions_cpu = transport.receive(total=0, is_seed=False, version=0, chunk_index=0)
+    values_cpu, positions_cpu = transport.receive(total=0, is_seed=False, version=0, file_index=0)
     assert values_cpu.numel() == 0
     assert positions_cpu is not None and positions_cpu.numel() == 0
     assert group.broadcasts == []
@@ -232,7 +231,7 @@ def test_nccl_transport_nonempty_send_broadcasts(monkeypatch):
 
     positions = torch.tensor([0, 2], dtype=POSITION_DTYPE)
     values = torch.tensor([1.0, -1.0], dtype=torch.bfloat16)
-    transport.send(DeltaPayload(values=values, positions=positions), version=0, chunk_index=0)
+    transport.send(DeltaPayload(values=values, positions=positions), version=0, file_index=0)
     # A delta broadcasts both values and positions.
     assert len(group.broadcasts) == 2
     assert torch.equal(group.broadcasts[0], values)

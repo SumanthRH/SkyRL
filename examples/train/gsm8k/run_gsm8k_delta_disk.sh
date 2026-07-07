@@ -22,11 +22,14 @@ set -x
 
 # Shared-filesystem directory the trainer writes deltas to and the inference engines read
 # from. On a single node any local path works; for multi-node it must be on a shared FS
-# reachable by both sides. Set KEEP_FILES=true to retain each version for debugging.
+# reachable by both sides (a cloud URI like gs://... or s3://... also works). Writes are
+# append-only: each sync writes a fresh weight_v{version} dir and nothing is deleted.
 : "${SYNC_DIR:="/tmp/skyrl-delta-sync"}"
-: "${KEEP_FILES:=false}"
 
-mkdir -p "$SYNC_DIR"
+case "$SYNC_DIR" in
+  s3://*|gs://*|az://*) ;;
+  *) mkdir -p "$SYNC_DIR" ;;
+esac
 
 # Delta weight sync runs only on the new inference path (the receiver is vLLM's
 # DeltaWeightTransferEngine). With the disk transport there is no NCCL group between trainer
@@ -34,7 +37,7 @@ mkdir -p "$SYNC_DIR"
 # reconstructs the bf16 base locally at load).
 export _SKYRL_USE_NEW_INFERENCE=1
 
-uv run --isolated --extra fsdp --env-file .env.ray -m skyrl.train.entrypoints.main_base \
+uv run --isolated --extra fsdp --extra gcp --env-file .env.ray -m skyrl.train.entrypoints.main_base \
   data.train_data="['$DATA_DIR/train.parquet']" \
   data.val_data="['$DATA_DIR/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
@@ -65,7 +68,6 @@ uv run --isolated --extra fsdp --env-file .env.ray -m skyrl.train.entrypoints.ma
   generator.inference_engine.weight_sync_backend=delta \
   generator.inference_engine.delta_weight_sync_config.transport=disk \
   generator.inference_engine.delta_weight_sync_config.sync_dir="$SYNC_DIR" \
-  generator.inference_engine.delta_weight_sync_config.keep_files=$KEEP_FILES \
   generator.inference_engine.async_engine=true \
   generator.batched=true \
   environment.env_class=gsm8k \

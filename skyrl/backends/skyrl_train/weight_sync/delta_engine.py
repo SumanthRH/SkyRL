@@ -80,20 +80,18 @@ class DeltaWeightTransferInitInfo(NCCLWeightTransferInitInfo):
     transport: str = "nccl"
     """Payload carrier: ``"nccl"`` (broadcast) or ``"disk"`` (shared-FS safetensors)."""
     sync_dir: str = ""
-    """Shared-FS directory for ``transport="disk"`` (ignored for NCCL)."""
-    keep_files: bool = False
-    """Keep each version's delta files after the sync (``transport="disk"`` only)."""
+    """Local/shared-FS path or cloud URI for ``transport="disk"`` (ignored for NCCL)."""
 
 
 @dataclass
 class DeltaWeightTransferUpdateInfo(WeightTransferUpdateInfo):
-    """One delta update (the transport-agnostic control-plane manifest for a chunk).
+    """One delta update (the transport-agnostic control-plane manifest for a payload).
 
     ``counts[i]`` is the number of changed elements for parameter ``i`` (the full element
     count for a seed). The actual positions/values travel out of band via the transport
     (NCCL broadcast or a disk read), not in this (HTTP) request. ``checksum`` is the CRC32
     the trainer computed over the packed payload bytes (verified before apply); ``version``
-    and ``chunk_index`` route a disk read to the right file (ignored by NCCL).
+    and ``file_index`` route a disk read to the right file (ignored by NCCL).
     """
 
     names: list[str] = field(default_factory=list)
@@ -103,7 +101,7 @@ class DeltaWeightTransferUpdateInfo(WeightTransferUpdateInfo):
     is_seed: bool = False
     checksum: int = 0
     version: int = 0
-    chunk_index: int = 0
+    file_index: int = 0
 
     def __post_init__(self) -> None:
         # The base ``WeightTransferUpdateInfo`` is a plain dataclass without ``__post_init__``;
@@ -159,7 +157,7 @@ class DeltaWeightTransferEngine(NCCLWeightTransferEngine):
         elif init_info.transport == "disk":
             # No process group: the trainer publishes files to the shared FS and every worker
             # reads them, so there is nothing to rendezvous on at init.
-            self._transport = DiskDeltaTransport(init_info.sync_dir, init_info.keep_files)
+            self._transport = DiskDeltaTransport(init_info.sync_dir)
         else:
             raise ValueError(f"Unsupported delta transport {init_info.transport!r}; expected 'nccl' or 'disk'.")
 
@@ -223,7 +221,7 @@ class DeltaWeightTransferEngine(NCCLWeightTransferEngine):
             total=total,
             is_seed=update_info.is_seed,
             version=update_info.version,
-            chunk_index=update_info.chunk_index,
+            file_index=update_info.file_index,
         )
         # Integrity guard: the trainer's CRC32 must match the bytes we obtained, regardless of
         # whether they came over NCCL or off the shared filesystem.

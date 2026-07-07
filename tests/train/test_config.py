@@ -12,6 +12,8 @@ from omegaconf import OmegaConf
 
 from skyrl.train.config.config import (
     BaseConfig,
+    DeltaWeightSyncConfig,
+    InferenceEngineConfig,
     SkyRLTrainConfig,
     _resolve_class_type,
     build_nested_dataclass,
@@ -163,6 +165,35 @@ def test_cross_field_defaults():
     )  # same as `generator.sampling_params.max_generate_length`
     assert cfg.generator.rope_scaling == cfg.trainer.rope_scaling
     assert cfg.generator.rope_theta == cfg.trainer.rope_theta
+
+
+def test_delta_disk_sync_config_validation():
+    cfg = InferenceEngineConfig(
+        weight_sync_backend="delta",
+        delta_weight_sync_config=DeltaWeightSyncConfig(transport="disk", sync_dir="/tmp/delta"),
+    )
+    assert cfg.delta_weight_sync_config.max_file_size_in_gb == 1.0
+    assert cfg.delta_weight_sync_config.max_files_to_keep is None
+
+    with pytest.raises(ValueError, match="max_file_size_in_gb"):
+        InferenceEngineConfig(
+            weight_sync_backend="delta",
+            delta_weight_sync_config=DeltaWeightSyncConfig(
+                transport="disk",
+                sync_dir="/tmp/delta",
+                max_file_size_in_gb=0,
+            ),
+        )
+
+    with pytest.raises(ValueError, match="max_files_to_keep"):
+        InferenceEngineConfig(
+            weight_sync_backend="delta",
+            delta_weight_sync_config=DeltaWeightSyncConfig(
+                transport="disk",
+                sync_dir="/tmp/delta",
+                max_files_to_keep=0,
+            ),
+        )
 
 
 class TestTrainerUseSamplePackingAlias:
