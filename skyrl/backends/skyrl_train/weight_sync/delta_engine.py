@@ -61,6 +61,7 @@ from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
     build_full_delta,
     build_full_seed,
     iter_unpack,
+    position_dtype_from_name,
     verify_delta_checksum,
 )
 from skyrl.train.utils.utils import str_to_torch_dtype
@@ -102,6 +103,7 @@ class DeltaWeightTransferUpdateInfo(WeightTransferUpdateInfo):
     checksum: int = 0
     version: int = 0
     file_index: int = 0
+    positions_dtype: str = "int64"
 
     def __post_init__(self) -> None:
         # The base ``WeightTransferUpdateInfo`` is a plain dataclass without ``__post_init__``;
@@ -116,6 +118,7 @@ class DeltaWeightTransferUpdateInfo(WeightTransferUpdateInfo):
             raise ValueError(f"`shapes` must align with `names`: got {len(self.shapes)} and {n}")
         if len(self.counts) != n:
             raise ValueError(f"`counts` must align with `names`: got {len(self.counts)} and {n}")
+        position_dtype_from_name(self.positions_dtype)
 
 
 class DeltaWeightTransferEngine(NCCLWeightTransferEngine):
@@ -222,6 +225,7 @@ class DeltaWeightTransferEngine(NCCLWeightTransferEngine):
             is_seed=update_info.is_seed,
             version=update_info.version,
             file_index=update_info.file_index,
+            positions_dtype=position_dtype_from_name(update_info.positions_dtype),
         )
         # Integrity guard: the trainer's CRC32 must match the bytes we obtained, regardless of
         # whether they came over NCCL or off the shared filesystem.

@@ -174,6 +174,9 @@ def test_delta_disk_sync_config_validation():
     )
     assert cfg.delta_weight_sync_config.max_file_size_in_gb == 1.0
     assert cfg.delta_weight_sync_config.max_files_to_keep is None
+    assert cfg.delta_weight_sync_config.trainer_diff_stage_area == "cpu"
+    assert cfg.delta_weight_sync_config.diff_num_workers == 0
+    assert cfg.delta_weight_sync_config.positions_transfer_dtype == "int32"
 
     with pytest.raises(ValueError, match="max_file_size_in_gb"):
         InferenceEngineConfig(
@@ -192,6 +195,36 @@ def test_delta_disk_sync_config_validation():
                 transport="disk",
                 sync_dir="/tmp/delta",
                 max_files_to_keep=0,
+            ),
+        )
+
+    with pytest.raises(ValueError, match="trainer_diff_stage_area"):
+        InferenceEngineConfig(
+            weight_sync_backend="delta",
+            delta_weight_sync_config=DeltaWeightSyncConfig(
+                transport="disk",
+                sync_dir="/tmp/delta",
+                trainer_diff_stage_area="tpu",
+            ),
+        )
+
+    with pytest.raises(ValueError, match="diff_num_workers"):
+        InferenceEngineConfig(
+            weight_sync_backend="delta",
+            delta_weight_sync_config=DeltaWeightSyncConfig(
+                transport="disk",
+                sync_dir="/tmp/delta",
+                diff_num_workers=-1,
+            ),
+        )
+
+    with pytest.raises(ValueError, match="positions_transfer_dtype"):
+        InferenceEngineConfig(
+            weight_sync_backend="delta",
+            delta_weight_sync_config=DeltaWeightSyncConfig(
+                transport="disk",
+                sync_dir="/tmp/delta",
+                positions_transfer_dtype="uint32",
             ),
         )
 

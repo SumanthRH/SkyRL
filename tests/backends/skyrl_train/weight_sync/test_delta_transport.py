@@ -75,6 +75,7 @@ def test_build_manifest_and_iter_params():
         checksum=1234,
         version=7,
         file_index=3,
+        positions_dtype="int32",
     )
     assert manifest["names"] == ["a.weight", "b.weight"]
     assert manifest["counts"] == [2, 0]
@@ -82,6 +83,7 @@ def test_build_manifest_and_iter_params():
     assert manifest["checksum"] == 1234
     assert manifest["version"] == 7
     assert manifest["file_index"] == 3
+    assert manifest["positions_dtype"] == "int32"
 
     params = list(iter_delta_params(manifest["names"], manifest["dtype_names"], manifest["shapes"], manifest["counts"]))
     assert [p.name for p in params] == ["a.weight", "b.weight"]
@@ -121,15 +123,22 @@ def test_disk_transport_seed_roundtrip(tmp_path):
 def test_disk_transport_delta_roundtrip_with_checksum(tmp_path):
     pytest.importorskip("safetensors")
     transport = DiskDeltaTransport(str(tmp_path))
-    positions = torch.tensor([0, 3, 7], dtype=POSITION_DTYPE)
+    positions = torch.tensor([0, 3, 7], dtype=torch.int32)
     values = torch.tensor([1.0, -2.0, 0.25], dtype=torch.bfloat16)
     crc = delta_checksum(positions, values)
 
     transport.begin_sync(1)
     transport.send(_payload_delta(positions, values), version=1, file_index=2)
 
-    values_cpu, positions_cpu = transport.receive(total=3, is_seed=False, version=1, file_index=2)
+    values_cpu, positions_cpu = transport.receive(
+        total=3,
+        is_seed=False,
+        version=1,
+        file_index=2,
+        positions_dtype=torch.int32,
+    )
     assert torch.equal(positions_cpu, positions)
+    assert positions_cpu.dtype == torch.int32
     assert torch.equal(values_cpu, values)
     # End-to-end integrity: the bytes that landed on disk verify against the sender's CRC.
     verify_delta_checksum(crc, positions_cpu, values_cpu)
@@ -147,9 +156,16 @@ def test_disk_transport_empty_chunk_writes_no_file(tmp_path):
     transport.send(empty_payload, version=0, file_index=0)
     assert not (tmp_path / "weight_v000000" / "file_00000.safetensors").exists()
 
-    values_cpu, positions_cpu = transport.receive(total=0, is_seed=False, version=0, file_index=0)
+    values_cpu, positions_cpu = transport.receive(
+        total=0,
+        is_seed=False,
+        version=0,
+        file_index=0,
+        positions_dtype=torch.int32,
+    )
     assert values_cpu.numel() == 0
     assert positions_cpu is not None and positions_cpu.numel() == 0
+    assert positions_cpu.dtype == torch.int32
 
 
 def test_disk_transport_is_append_only(tmp_path):

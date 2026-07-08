@@ -20,6 +20,9 @@ import pytest
 import torch
 
 from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
+    NARROW_POSITION_DTYPE,
+    POSITION_DTYPE,
+    POSITION_INT32_MAX,
     ShardShadow,
     SnapshotDiffer,
     _storage_ptr,
@@ -32,6 +35,7 @@ from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
     pack_seed,
     reset_prequant_capture,
     take_prequant_bf16,
+    validate_position_dtype_for_shapes,
 )
 
 
@@ -145,6 +149,31 @@ def test_delta_reconstruction_is_nan_narrow_and_replays_in_place():
     assert torch.equal(_replay(w["b.weight"], payloads["b.weight"]), w["b.weight"])
 
 
+def test_pack_delta_can_use_int32_positions():
+    diffs = [
+        (
+            torch.tensor([0, 2], dtype=POSITION_DTYPE),
+            torch.tensor([1.0, -1.0], dtype=torch.bfloat16),
+        )
+    ]
+
+    packed_positions, packed_values, counts = pack_delta(diffs, position_dtype=NARROW_POSITION_DTYPE)
+
+    assert counts == [2]
+    assert packed_positions.dtype == torch.int32
+    payload = build_full_delta([3], packed_positions, packed_values, device=CPU)
+    assert payload[0].item() == 1.0
+    assert torch.isnan(payload[1])
+    assert payload[2].item() == -1.0
+
+
+def test_int32_position_dtype_rejects_only_overflowing_params():
+    validate_position_dtype_for_shapes(["ok"], [[POSITION_INT32_MAX + 1]], torch.int32)
+    validate_position_dtype_for_shapes(["huge"], [[POSITION_INT32_MAX + 2]], torch.int64)
+    with pytest.raises(ValueError, match="positions_transfer_dtype='int32'.*huge.*int64"):
+        validate_position_dtype_for_shapes(["huge"], [[POSITION_INT32_MAX + 2]], torch.int32)
+
+
 def test_no_change_delta_is_all_nan_and_replay_is_noop():
     torch.manual_seed(2)
     differ = SnapshotDiffer()
@@ -181,6 +210,59 @@ def test_multiple_deltas_accumulate_on_shadow():
         shadow = {n: _replay(shadow[n], payloads[n]) for n in NAMES}
         for n in NAMES:
             assert torch.equal(shadow[n], cur[n])
+
+
+def test_snapshot_differ_diff_many_cpu_parallel_matches_sequential():
+    torch.manual_seed(4)
+    names = [f"p{i}" for i in range(4)]
+    base = [torch.randn(128, dtype=torch.bfloat16) for _ in names]
+    cur = [t.clone() for t in base]
+    cur[0][0:3] += 1
+    cur[2][10] -= 2
+
+    seq = SnapshotDiffer()
+    par = SnapshotDiffer()
+    seq.seed_many(names, base)
+    par.seed_many(names, base, num_workers=2)
+
+    seq_diffs = seq.diff_many(names, cur, backend="cpu", num_workers=1)
+    par_diffs = par.diff_many(names, cur, backend="cpu", num_workers=0)
+
+    for (seq_is_seed, seq_pos, seq_val), (par_is_seed, par_pos, par_val) in zip(seq_diffs, par_diffs):
+        assert seq_is_seed is par_is_seed is False
+        assert seq_pos is not None
+        assert par_pos is not None
+        assert torch.equal(seq_pos, par_pos)
+        assert torch.equal(seq_val, par_val)
+    for name in names:
+        assert torch.equal(seq._snapshot[name], par._snapshot[name])
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required for GPU delta diff")
+def test_snapshot_differ_gpu_diff_matches_cpu():
+    torch.manual_seed(5)
+    names = ["a", "b"]
+    base_gpu = [torch.randn(256, dtype=torch.bfloat16, device="cuda") for _ in names]
+    cur_gpu = [t.clone() for t in base_gpu]
+    cur_gpu[0][1:4] += 1
+    cur_gpu[1][20] -= 2
+
+    cpu = SnapshotDiffer()
+    gpu = SnapshotDiffer()
+    cpu.seed_many(names, base_gpu)
+    gpu.seed_many(names, base_gpu)
+
+    cpu_diffs = cpu.diff_many(names, cur_gpu, backend="cpu")
+    gpu_diffs = gpu.diff_many(names, cur_gpu, backend="gpu", num_workers=0)
+
+    for (cpu_is_seed, cpu_pos, cpu_val), (gpu_is_seed, gpu_pos, gpu_val) in zip(cpu_diffs, gpu_diffs):
+        assert cpu_is_seed is gpu_is_seed is False
+        assert cpu_pos is not None
+        assert gpu_pos is not None
+        assert torch.equal(cpu_pos, gpu_pos)
+        assert torch.equal(cpu_val, gpu_val)
+    for name in names:
+        assert torch.equal(cpu._snapshot[name], gpu._snapshot[name])
 
 
 def _active_shadow():
@@ -506,3 +588,121 @@ async def test_disk_sender_batches_chunks_by_max_file_size(monkeypatch):
     assert [update["names"] for update in client.updates] == [["a.weight", "b.weight"], ["c.weight"]]
     assert [(version, file_index) for version, file_index, _ in transport.sent] == [(0, 0), (0, 1)]
     assert [payload.values.numel() for _, _, payload in transport.sent] == [4, 2]
+
+
+@pytest.mark.asyncio
+async def test_disk_sender_uses_int32_positions_for_normal_sparse_chunks(monkeypatch):
+    from skyrl.backends.skyrl_train.weight_sync.base import WeightChunk
+    from skyrl.backends.skyrl_train.weight_sync.delta_strategy import (
+        DeltaInitInfo,
+        DeltaWeightTransferSender,
+    )
+
+    monkeypatch.setattr(torch.distributed, "barrier", lambda: None)
+    client = _FakeInferenceClient()
+    transport = _FakeDeltaTransport()
+    sender = DeltaWeightTransferSender(
+        DeltaInitInfo(
+            override_existing_receiver=False,
+            master_addr="127.0.0.1",
+            master_port=1234,
+            rank_offset=1,
+            world_size=2,
+            group_name="test",
+            backend="nccl",
+            model_dtype_str="bfloat16",
+            transport="disk",
+            sync_dir="/tmp/delta",
+            max_file_size_in_gb=1,
+        ),
+        client,
+        transport,
+    )
+
+    base = [
+        WeightChunk(
+            names=["a.weight"],
+            dtypes=["bfloat16"],
+            shapes=[[4]],
+            tensors=[torch.tensor([0.0, 1.0, 2.0, 3.0], dtype=torch.bfloat16)],
+        )
+    ]
+    await sender._send_chunks_disk(base, rank=0)  # seed the snapshot.
+    client.updates.clear()
+    transport.sent.clear()
+
+    changed = [
+        WeightChunk(
+            names=["a.weight"],
+            dtypes=["bfloat16"],
+            shapes=[[4]],
+            tensors=[torch.tensor([0.0, 9.0, 2.0, 3.0], dtype=torch.bfloat16)],
+        )
+    ]
+    await sender._send_chunks_disk(changed, rank=0)
+
+    assert [update["positions_dtype"] for update in client.updates] == ["int32"]
+    assert len(transport.sent) == 1
+    payload = transport.sent[0][2]
+    assert payload.positions is not None
+    assert payload.positions.dtype == torch.int32
+    assert torch.equal(payload.positions, torch.tensor([1], dtype=torch.int32))
+
+
+@pytest.mark.asyncio
+async def test_disk_sender_honors_int64_positions_transfer_dtype(monkeypatch):
+    from skyrl.backends.skyrl_train.weight_sync.base import WeightChunk
+    from skyrl.backends.skyrl_train.weight_sync.delta_strategy import (
+        DeltaInitInfo,
+        DeltaWeightTransferSender,
+    )
+
+    monkeypatch.setattr(torch.distributed, "barrier", lambda: None)
+    client = _FakeInferenceClient()
+    transport = _FakeDeltaTransport()
+    sender = DeltaWeightTransferSender(
+        DeltaInitInfo(
+            override_existing_receiver=False,
+            master_addr="127.0.0.1",
+            master_port=1234,
+            rank_offset=1,
+            world_size=2,
+            group_name="test",
+            backend="nccl",
+            model_dtype_str="bfloat16",
+            transport="disk",
+            sync_dir="/tmp/delta",
+            positions_transfer_dtype="int64",
+        ),
+        client,
+        transport,
+    )
+
+    base = [
+        WeightChunk(
+            names=["a.weight"],
+            dtypes=["bfloat16"],
+            shapes=[[4]],
+            tensors=[torch.tensor([0.0, 1.0, 2.0, 3.0], dtype=torch.bfloat16)],
+        )
+    ]
+    await sender._send_chunks_disk(base, rank=0)
+    client.updates.clear()
+    transport.sent.clear()
+
+    changed = [
+        WeightChunk(
+            names=["a.weight"],
+            dtypes=["bfloat16"],
+            shapes=[[4]],
+            tensors=[torch.tensor([0.0, 9.0, 2.0, 3.0], dtype=torch.bfloat16)],
+        )
+    ]
+    await sender._send_chunks_disk(changed, rank=0)
+
+    assert [update["positions_dtype"] for update in client.updates] == ["int64"]
+    assert len(transport.sent) == 1
+    payload = transport.sent[0][2]
+    assert payload.positions is not None
+    assert payload.positions.dtype == torch.int64
+    assert torch.equal(payload.positions, torch.tensor([1], dtype=torch.int64))

@@ -61,6 +61,9 @@ from skyrl.backends.skyrl_train.weight_sync.delta_utils import (
     delta_checksum,
     pack_delta,
     pack_seed,
+    position_dtype_from_name,
+    position_dtype_name,
+    validate_position_dtype_for_shapes,
 )
 from skyrl.backends.skyrl_train.weight_sync.transfer_strategy import (
     WeightSyncInitInfo,
@@ -126,11 +129,20 @@ class _PendingDeltaFile:
     counts: List[int]
     values: List[torch.Tensor]
     positions: List[torch.Tensor]
+    positions_dtype: Optional[torch.dtype] = None
     wire_bytes: int = 0
 
     @classmethod
     def empty(cls, *, is_seed: bool) -> "_PendingDeltaFile":
-        return cls(is_seed=is_seed, names=[], dtype_names=[], shapes=[], counts=[], values=[], positions=[])
+        return cls(
+            is_seed=is_seed,
+            names=[],
+            dtype_names=[],
+            shapes=[],
+            counts=[],
+            values=[],
+            positions=[],
+        )
 
     def add(self, prepared: _PreparedDeltaChunk, dtype_str: str) -> None:
         if prepared.is_seed != self.is_seed:
@@ -142,6 +154,14 @@ class _PendingDeltaFile:
         self.values.append(prepared.payload.values)
         if not self.is_seed:
             assert prepared.payload.positions is not None
+            positions_dtype = prepared.payload.positions.dtype
+            if self.positions_dtype is None:
+                self.positions_dtype = positions_dtype
+            elif self.positions_dtype != positions_dtype:
+                raise ValueError(
+                    f"Cannot mix delta position dtypes in one file: "
+                    f"{self.positions_dtype} and {positions_dtype}"
+                )
             self.positions.append(prepared.payload.positions)
         self.wire_bytes += prepared.wire_bytes
 
@@ -152,10 +172,11 @@ class _PendingDeltaFile:
             values = torch.empty(0, dtype=torch.bfloat16)
         if self.is_seed:
             return DeltaPayload(values=values, positions=None)
+        positions_dtype = self.positions_dtype or POSITION_DTYPE
         if self.positions:
-            positions = torch.cat([p.detach().to(POSITION_DTYPE).reshape(-1) for p in self.positions])
+            positions = torch.cat([p.detach().to(positions_dtype).reshape(-1) for p in self.positions])
         else:
-            positions = torch.empty(0, dtype=POSITION_DTYPE)
+            positions = torch.empty(0, dtype=positions_dtype)
         return DeltaPayload(values=values, positions=positions)
 
 
@@ -184,6 +205,12 @@ class DeltaInitInfo(WeightSyncInitInfo):
     """Maximum batched delta file size in GiB for ``transport="disk"``."""
     max_files_to_keep: Optional[int] = None
     """Optional per-sync retention limit for disk delta files."""
+    positions_transfer_dtype: str = "int32"
+    """Integer dtype used to transfer sparse flat positions: ``"int32"`` or ``"int64"``."""
+    trainer_diff_stage_area: str = "cpu"
+    """Where trainer rank 0 computes deltas: ``"cpu"`` or ``"gpu"``."""
+    diff_num_workers: int = 0
+    """Maximum per-chunk diff workers. ``0`` means one worker per tensor."""
 
     @staticmethod
     def strategy_type() -> type:
@@ -284,8 +311,11 @@ class DeltaWeightTransferSender(WeightTransferSender):
         if _DISK_SKIP_SEED and self._init_info.transport == "disk" and not self._snapshot_seeded:
             for chunk in chunks:
                 if rank == 0:
-                    for n, t in zip(chunk.names, chunk.tensors):
-                        self._differ.seed(n, t)
+                    self._differ.seed_many(
+                        chunk.names,
+                        chunk.tensors,
+                        num_workers=self._diff_num_workers_for_chunk(chunk),
+                    )
                 torch.distributed.barrier()
             self._snapshot_seeded = True
             return
@@ -315,17 +345,28 @@ class DeltaWeightTransferSender(WeightTransferSender):
     def _prepare_delta_chunk(self, chunk: WeightChunk) -> _PreparedDeltaChunk:
         # Seed the whole chunk if any parameter hasn't been sent before; otherwise delta.
         is_seed = not all(self._differ.has(n) for n in chunk.names)
+        diff_stage_area = self._init_info.trainer_diff_stage_area
+        diff_num_workers = self._diff_num_workers_for_chunk(chunk)
 
         if is_seed:
-            values = [self._differ.seed(n, t) for n, t in zip(chunk.names, chunk.tensors)]
+            values = self._differ.seed_many(chunk.names, chunk.tensors, num_workers=diff_num_workers)
             packed_values, counts = pack_seed(values)
             packed_positions = None
         else:
+            position_dtype = position_dtype_from_name(self._init_info.positions_transfer_dtype)
+            validate_position_dtype_for_shapes(chunk.names, chunk.shapes, position_dtype)
             diffs: List[Tuple[torch.Tensor, torch.Tensor]] = []
-            for n, t in zip(chunk.names, chunk.tensors):
-                _, pos, val = self._differ.diff(n, t)
+            for did_seed, pos, val in self._differ.diff_many(
+                chunk.names,
+                chunk.tensors,
+                backend=diff_stage_area,
+                num_workers=diff_num_workers,
+            ):
+                if did_seed:
+                    raise ValueError("Delta diff unexpectedly reseeded a parameter in a sparse chunk.")
+                assert pos is not None
                 diffs.append((pos, val))
-            packed_positions, packed_values, counts = pack_delta(diffs)
+            packed_positions, packed_values, counts = pack_delta(diffs, position_dtype=position_dtype)
 
         logger.info(_format_delta_size(is_seed, counts, chunk.shapes, packed_values, packed_positions))
 
@@ -338,6 +379,11 @@ class DeltaWeightTransferSender(WeightTransferSender):
             payload=payload,
             wire_bytes=_payload_wire_bytes(payload),
         )
+
+    def _diff_num_workers_for_chunk(self, chunk: WeightChunk) -> int:
+        if self._init_info.diff_num_workers > 0:
+            return min(self._init_info.diff_num_workers, len(chunk.names))
+        return len(chunk.names)
 
     async def _send_chunks_disk(self, chunks: Iterable[WeightChunk], rank: int) -> None:
         dtype_str = self._init_info.model_dtype_str
@@ -354,6 +400,11 @@ class DeltaWeightTransferSender(WeightTransferSender):
                 return
             payload = pending.to_payload()
             checksum = delta_checksum(None if pending.is_seed else payload.positions, payload.values)
+            if pending.is_seed:
+                positions_dtype = self._init_info.positions_transfer_dtype
+            else:
+                assert payload.positions is not None
+                positions_dtype = position_dtype_name(payload.positions.dtype)
             update_info = build_delta_manifest(
                 names=pending.names,
                 dtype_names=pending.dtype_names,
@@ -363,6 +414,7 @@ class DeltaWeightTransferSender(WeightTransferSender):
                 checksum=checksum,
                 version=self._version,
                 file_index=file_index,
+                positions_dtype=positions_dtype,
             )
             logger.info(
                 "delta file: version={} file_index={} params={} size={:.2f} MiB",
@@ -404,6 +456,10 @@ class DeltaWeightTransferSender(WeightTransferSender):
         prepared = self._prepare_delta_chunk(chunk)
         payload = prepared.payload
         checksum = delta_checksum(None if prepared.is_seed else payload.positions, payload.values)
+        positions_dtype = self._init_info.positions_transfer_dtype
+        if not prepared.is_seed:
+            assert payload.positions is not None
+            positions_dtype = position_dtype_name(payload.positions.dtype)
         update_info = build_delta_manifest(
             names=prepared.names,
             dtype_names=[dtype_str] * len(prepared.names),
@@ -413,6 +469,7 @@ class DeltaWeightTransferSender(WeightTransferSender):
             checksum=checksum,
             version=version,
             file_index=file_index,
+            positions_dtype=positions_dtype,
         )
 
         assert self._transport is not None
@@ -470,6 +527,9 @@ class DeltaTransferStrategy(WeightTransferStrategy):
             sync_dir=delta_cfg.sync_dir,
             max_file_size_in_gb=delta_cfg.max_file_size_in_gb,
             max_files_to_keep=delta_cfg.max_files_to_keep,
+            positions_transfer_dtype=delta_cfg.positions_transfer_dtype,
+            trainer_diff_stage_area=delta_cfg.trainer_diff_stage_area,
+            diff_num_workers=delta_cfg.diff_num_workers,
             override_existing_receiver=ie_cfg.override_existing_update_group == "enable",
         )
 

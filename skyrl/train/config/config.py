@@ -500,6 +500,20 @@ class DeltaWeightSyncConfig(BaseConfig):
     """Optional per-sync retention limit for disk delta files. When set, the sender removes the
     oldest file indices in the active ``weight_v{version}`` directory in a background thread as
     newer files are uploaded. ``None`` preserves all files."""
+    positions_transfer_dtype: str = "int32"
+    """Integer dtype used to transfer sparse flat positions. ``"int32"`` is the default and
+    cuts position bytes in half; use ``"int64"`` for models with an individual parameter larger
+    than the int32 index range."""
+    trainer_diff_stage_area: str = "cpu"
+    """Where trainer rank 0 stages and computes sparse deltas:
+    - ``"cpu"``: current behavior; copy each full tensor to CPU, then diff against the CPU
+      snapshot.
+    - ``"gpu"``: for CUDA tensors, copy the previous CPU snapshot to GPU, compute the diff on
+      GPU, copy only sparse positions/values back to CPU, and patch the CPU snapshot in-place."""
+    diff_num_workers: int = 0
+    """Maximum worker threads used to diff parameters within one chunk. ``0`` means one worker
+    per tensor in the ``WeightChunk``. Values above zero cap the fanout, which can reduce host
+    thread pressure for CPU staging and transient GPU memory for GPU staging."""
 
 
 @dataclass
@@ -610,6 +624,13 @@ class InferenceEngineConfig(BaseConfig):
                 and self.delta_weight_sync_config.max_files_to_keep < 1
             ):
                 raise ValueError("delta_weight_sync_config.max_files_to_keep must be >= 1 when set.")
+            if self.delta_weight_sync_config.positions_transfer_dtype not in ("int32", "int64"):
+                raise ValueError("delta_weight_sync_config.positions_transfer_dtype must be 'int32' or 'int64'.")
+            stage_area = self.delta_weight_sync_config.trainer_diff_stage_area
+            if stage_area not in ("cpu", "gpu"):
+                raise ValueError("delta_weight_sync_config.trainer_diff_stage_area must be 'cpu' or 'gpu'.")
+            if self.delta_weight_sync_config.diff_num_workers < 0:
+                raise ValueError("delta_weight_sync_config.diff_num_workers must be >= 0.")
 
 
 # ---------------------------------------------------------------------------

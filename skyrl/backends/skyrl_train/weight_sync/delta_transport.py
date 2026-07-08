@@ -39,9 +39,9 @@ from skyrl.backends.skyrl_train.weight_sync.delta_utils import POSITION_DTYPE
 class DeltaPayload:
     """The packed sparse payload for one transport send.
 
-    ``values`` is always present (bf16). ``positions`` (flat indices into the full tensor,
-    :data:`POSITION_DTYPE`) is present for a delta and ``None`` for a seed -- a seed is dense,
-    so the values *are* the whole flattened tensor and no positions are needed.
+    ``values`` is always present (bf16). ``positions`` (flat indices into the full tensor)
+    is present for a delta and ``None`` for a seed -- a seed is dense, so the values *are*
+    the whole flattened tensor and no positions are needed.
     """
 
     values: torch.Tensor
@@ -78,7 +78,13 @@ class DeltaTransport(ABC):
 
     @abstractmethod
     def receive(
-        self, *, total: int, is_seed: bool, version: int, file_index: int
+        self,
+        *,
+        total: int,
+        is_seed: bool,
+        version: int,
+        file_index: int,
+        positions_dtype: torch.dtype = POSITION_DTYPE,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Obtain one payload file/broadcast.
 
@@ -115,7 +121,13 @@ class NcclDeltaTransport(DeltaTransport):
             self._broadcast(payload.positions.to(self._device))
 
     def receive(
-        self, *, total: int, is_seed: bool, version: int, file_index: int
+        self,
+        *,
+        total: int,
+        is_seed: bool,
+        version: int,
+        file_index: int,
+        positions_dtype: torch.dtype = POSITION_DTYPE,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         values = torch.empty(total, dtype=torch.bfloat16, device=self._device)
         if total > 0:
@@ -123,7 +135,7 @@ class NcclDeltaTransport(DeltaTransport):
         values_cpu = values.cpu()
         if is_seed:
             return values_cpu, None
-        positions = torch.empty(total, dtype=POSITION_DTYPE, device=self._device)
+        positions = torch.empty(total, dtype=positions_dtype, device=self._device)
         if total > 0:
             self._broadcast(positions)
         return values_cpu, positions.cpu()
@@ -230,11 +242,17 @@ class DiskDeltaTransport(DeltaTransport):
     # ---- receiver --------------------------------------------------------------------
 
     def receive(
-        self, *, total: int, is_seed: bool, version: int, file_index: int
+        self,
+        *,
+        total: int,
+        is_seed: bool,
+        version: int,
+        file_index: int,
+        positions_dtype: torch.dtype = POSITION_DTYPE,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if total == 0:
             empty = torch.empty(0, dtype=torch.bfloat16)
-            return empty, (None if is_seed else torch.empty(0, dtype=POSITION_DTYPE))
+            return empty, (None if is_seed else torch.empty(0, dtype=positions_dtype))
         from safetensors.torch import load as st_load
 
         with skyrl_io.open_file(self._file_path(version, file_index), "rb") as f:
@@ -242,7 +260,13 @@ class DiskDeltaTransport(DeltaTransport):
         values_cpu = loaded["values"]
         if is_seed:
             return values_cpu, None
-        return values_cpu, loaded["positions"]
+        positions_cpu = loaded["positions"]
+        if positions_cpu.dtype != positions_dtype:
+            raise ValueError(
+                f"Delta positions dtype mismatch: manifest says {positions_dtype}, "
+                f"file contains {positions_cpu.dtype}."
+            )
+        return values_cpu, positions_cpu
 
     def teardown(self) -> None:
         self._drain_cleanup_futures(block=True)

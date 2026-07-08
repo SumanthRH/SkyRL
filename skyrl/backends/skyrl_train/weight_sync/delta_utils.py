@@ -33,14 +33,56 @@ in :meth:`ShardShadow.install_persistent` (lazy ``vllm`` import), exercised on t
 from __future__ import annotations
 
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import torch
 
-# Positions index into the *flattened* full tensor. int64 keeps us safe for params with
-# more than 2**31 elements (NCCL broadcasts int64 fine).
+# Positions index into the *flattened* full tensor. PyTorch indexing APIs are safest with
+# int64, but the wire can use int32 for tensors that cannot overflow it.
 POSITION_DTYPE = torch.int64
+NARROW_POSITION_DTYPE = torch.int32
+POSITION_INT32_MAX = torch.iinfo(torch.int32).max
+
+
+def position_dtype_name(dtype: torch.dtype) -> str:
+    if dtype == torch.int32:
+        return "int32"
+    if dtype == torch.int64:
+        return "int64"
+    raise ValueError(f"Unsupported delta position dtype: {dtype}")
+
+
+def position_dtype_from_name(name: str) -> torch.dtype:
+    if name == "int32":
+        return torch.int32
+    if name == "int64":
+        return torch.int64
+    raise ValueError(f"Unsupported delta position dtype: {name!r}")
+
+
+def validate_position_dtype_for_shapes(
+    names: Sequence[str],
+    shapes: Sequence[Sequence[int]],
+    position_dtype: torch.dtype,
+) -> None:
+    """Validate that flat per-tensor positions fit in the configured transfer dtype."""
+    if position_dtype == torch.int64:
+        return
+    if position_dtype != torch.int32:
+        raise ValueError(f"Unsupported delta position dtype: {position_dtype}")
+
+    for name, shape in zip(names, shapes):
+        numel = 1
+        for dim in shape:
+            numel *= int(dim)
+        if numel > POSITION_INT32_MAX + 1:
+            raise ValueError(
+                "delta_weight_sync_config.positions_transfer_dtype='int32' cannot encode "
+                f"positions for parameter {name!r} with shape {list(shape)} ({numel} elements). "
+                "Set delta_weight_sync_config.positions_transfer_dtype='int64' for this model."
+            )
 
 
 class SnapshotDiffer:
@@ -60,6 +102,15 @@ class SnapshotDiffer:
         return name in self._snapshot
 
     @staticmethod
+    def _raise_if_nan(name: str, cur: torch.Tensor) -> None:
+        if bool(torch.isnan(cur).any().item()):
+            raise ValueError(
+                f"Parameter '{name}' contains NaN values; refusing to sync (NaN is the "
+                f"delta 'unchanged' sentinel and would not propagate). This usually means "
+                f"training diverged."
+            )
+
+    @staticmethod
     def _to_flat_bf16(name: str, full: torch.Tensor) -> torch.Tensor:
         """Flatten to CPU bf16 and fail fast on NaN.
 
@@ -69,12 +120,7 @@ class SnapshotDiffer:
         than ship a corrupt/garbage update.
         """
         cur = full.detach().to(torch.bfloat16).reshape(-1).cpu()
-        if torch.isnan(cur).any():
-            raise ValueError(
-                f"Parameter '{name}' contains NaN values; refusing to sync (NaN is the "
-                f"delta 'unchanged' sentinel and would not propagate). This usually means "
-                f"training diverged."
-            )
+        SnapshotDiffer._raise_if_nan(name, cur)
         return cur
 
     def seed(self, name: str, full: torch.Tensor) -> torch.Tensor:
@@ -82,6 +128,26 @@ class SnapshotDiffer:
         cur = self._to_flat_bf16(name, full)
         self._snapshot[name] = cur.clone()
         return cur
+
+    def seed_many(
+        self,
+        names: Sequence[str],
+        tensors: Sequence[torch.Tensor],
+        *,
+        num_workers: int = 1,
+    ) -> List[torch.Tensor]:
+        """Seed a chunk, optionally flattening tensors on multiple CPU worker threads."""
+        if num_workers <= 0:
+            num_workers = len(names)
+        if num_workers <= 1 or len(names) <= 1:
+            return [self.seed(n, t) for n, t in zip(names, tensors)]
+
+        with ThreadPoolExecutor(max_workers=num_workers) as pool:
+            values = list(pool.map(lambda nt: self._to_flat_bf16(*nt), zip(names, tensors)))
+
+        for name, cur in zip(names, values):
+            self._snapshot[name] = cur.clone()
+        return values
 
     def diff(self, name: str, full: torch.Tensor) -> Tuple[bool, Optional[torch.Tensor], torch.Tensor]:
         """Diff ``full`` against the snapshot for ``name`` and advance the snapshot.
@@ -105,6 +171,94 @@ class SnapshotDiffer:
         self._snapshot[name] = cur.clone()
         return False, positions, values
 
+    def diff_gpu(self, name: str, full: torch.Tensor) -> Tuple[bool, Optional[torch.Tensor], torch.Tensor]:
+        """Diff on CUDA, keeping the persistent snapshot on CPU.
+
+        This path is useful when the extractor already yields CUDA tensors: it compares the
+        current tensor against a transient GPU copy of the previous CPU snapshot, then copies
+        only sparse ``positions``/``values`` back to CPU and patches the CPU snapshot in-place.
+        It avoids the current CPU path's full current-tensor D2H copy for every delta, at the
+        cost of a full previous-snapshot H2D copy for comparison.
+        """
+        if not full.is_cuda:
+            return self.diff(name, full)
+
+        cur = full.detach().to(torch.bfloat16).reshape(-1)
+        self._raise_if_nan(name, cur)
+        if name not in self._snapshot:
+            cur_cpu = cur.cpu()
+            self._snapshot[name] = cur_cpu.clone()
+            return True, None, cur_cpu
+
+        prev = self._snapshot[name]
+        if prev.numel() != cur.numel():
+            cur_cpu = cur.cpu()
+            self._snapshot[name] = cur_cpu.clone()
+            return True, None, cur_cpu
+
+        prev_gpu = prev.to(device=cur.device, non_blocking=True)
+        mask = prev_gpu != cur
+        positions_gpu = mask.nonzero(as_tuple=False).flatten()
+        values_gpu = cur[positions_gpu]
+        positions = positions_gpu.to(POSITION_DTYPE).cpu()
+        values = values_gpu.cpu()
+        if positions.numel() > 0:
+            prev[positions] = values
+        return False, positions, values
+
+    def diff_many(
+        self,
+        names: Sequence[str],
+        tensors: Sequence[torch.Tensor],
+        *,
+        backend: str = "cpu",
+        num_workers: int = 1,
+    ) -> List[Tuple[bool, Optional[torch.Tensor], torch.Tensor]]:
+        """Diff a chunk, optionally parallelizing per-parameter CPU work.
+
+        ``backend="cpu"`` copies current weights to CPU before comparing. ``backend="gpu"``
+        compares CUDA tensors against a transient GPU copy of the previous CPU snapshot and
+        copies only sparse positions/values back. ``num_workers <= 0`` means one worker per
+        tensor in the chunk.
+        """
+        if backend != "cpu":
+            if backend != "gpu":
+                raise ValueError(f"Unsupported delta diff backend {backend!r}; expected 'cpu' or 'gpu'.")
+        if num_workers <= 0:
+            num_workers = len(names)
+        if num_workers <= 1 or len(names) <= 1:
+            if backend == "gpu":
+                return [self.diff_gpu(n, t) for n, t in zip(names, tensors)]
+            return [self.diff(n, t) for n, t in zip(names, tensors)]
+
+        if backend == "gpu":
+            # Each WeightChunk entry has an independent parameter name/snapshot, so the GPU
+            # path can update each parameter's CPU snapshot from its own worker. This keeps
+            # sparse CPU snapshot patching parallel with the GPU compare work.
+            with ThreadPoolExecutor(max_workers=num_workers) as pool:
+                return list(pool.map(lambda nt: self.diff_gpu(*nt), zip(names, tensors)))
+
+        prevs = [self._snapshot.get(n) for n in names]
+
+        def compute_cpu(args: Tuple[str, torch.Tensor, Optional[torch.Tensor]]):
+            n, t, prev = args
+            cur = self._to_flat_bf16(n, t)
+            if prev is None or prev.numel() != cur.numel():
+                return True, None, cur, cur.clone()
+            mask = prev != cur
+            positions = mask.nonzero(as_tuple=False).flatten().to(POSITION_DTYPE)
+            values = cur[positions]
+            return False, positions, values, cur.clone()
+
+        with ThreadPoolExecutor(max_workers=num_workers) as pool:
+            results = list(pool.map(compute_cpu, zip(names, tensors, prevs)))
+
+        diffs: List[Tuple[bool, Optional[torch.Tensor], torch.Tensor]] = []
+        for name, (is_seed, positions, values, snapshot) in zip(names, results):
+            self._snapshot[name] = snapshot
+            diffs.append((is_seed, positions, values))
+        return diffs
+
     def reset(self, name: Optional[str] = None) -> None:
         """Forget the snapshot (forces a reseed). Drops one param or all."""
         if name is None:
@@ -127,20 +281,24 @@ def pack_seed(values_per_param: List[torch.Tensor]) -> Tuple[torch.Tensor, List[
 
 def pack_delta(
     diffs_per_param: List[Tuple[torch.Tensor, torch.Tensor]],
+    *,
+    position_dtype: torch.dtype = POSITION_DTYPE,
 ) -> Tuple[torch.Tensor, torch.Tensor, List[int]]:
     """Concatenate sparse ``(positions, values)`` pairs.
 
     Returns ``(packed_positions, packed_values, counts)`` where ``counts[i]`` is the number
     of changed elements for parameter ``i``.
     """
+    if position_dtype not in (torch.int32, torch.int64):
+        raise ValueError(f"Unsupported delta position dtype: {position_dtype}")
     counts = [int(pos.numel()) for pos, _ in diffs_per_param]
     if not diffs_per_param:
         return (
-            torch.empty(0, dtype=POSITION_DTYPE),
+            torch.empty(0, dtype=position_dtype),
             torch.empty(0, dtype=torch.bfloat16),
             counts,
         )
-    packed_pos = torch.cat([pos.to(POSITION_DTYPE).reshape(-1) for pos, _ in diffs_per_param])
+    packed_pos = torch.cat([pos.to(position_dtype).reshape(-1) for pos, _ in diffs_per_param])
     packed_val = torch.cat([val.to(torch.bfloat16).reshape(-1) for _, val in diffs_per_param])
     return packed_pos, packed_val, counts
 
@@ -220,6 +378,7 @@ def build_delta_manifest(
     checksum: int,
     version: int = 0,
     file_index: int = 0,
+    positions_dtype: str = "int64",
 ) -> Dict[str, Any]:
     """Assemble the flat control-plane manifest dict for one delta file.
 
@@ -236,6 +395,7 @@ def build_delta_manifest(
         "checksum": int(checksum),
         "version": int(version),
         "file_index": int(file_index),
+        "positions_dtype": positions_dtype,
     }
 
 
